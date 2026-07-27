@@ -18,8 +18,11 @@ namespace WPMCP\Tests\Free\Platform;
  */
 class ToolsListBudgetTest extends \WP_UnitTestCase
 {
-    /** Max JSON bytes for the full tools/list payload of every registered ability. */
-    private const TOOLS_LIST_BYTE_BUDGET = 100000;
+    /** Max JSON bytes for the full tools/list payload of every registered ability.
+     *  Raised 100000 -> 110000 in review for the forms integration cluster
+     *  (Gravity Forms, Formidable, Contact Form 7, WPForms); compact tool mode
+     *  keeps clients with tool caps at ~2.8KB regardless. */
+    private const TOOLS_LIST_BYTE_BUDGET = 110000;
 
     /** @return array<int, array<string, mixed>> tools/list-shaped entries. */
     private static function payload(): array
