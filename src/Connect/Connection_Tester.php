@@ -59,7 +59,7 @@ class Connection_Tester
             return [
                 'ok'      => false,
                 'status'  => 404,
-                'message' => __('The MCP endpoint answered 404 — the MCP adapter route is not mounted. Check that the Abilities API / MCP adapter is active on this WordPress version.', 'wpmcp'),
+                'message' => __('The MCP endpoint answered 404, the MCP adapter route is not mounted. Check that the Abilities API / MCP adapter is active on this WordPress version.', 'wpmcp'),
             ];
         }
 

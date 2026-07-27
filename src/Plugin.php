@@ -2299,7 +2299,7 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/update-block',
             'free',
-            'Surgically update ONE block in place by "path" (array of zero-based indexes into the parse-blocks tree, descending innerBlocks): replace its attributes ("attrs", full replacement) and/or its inner HTML ("inner_html", leaf blocks only — target a container\'s children by their own paths). Requires expected_hash (the content_hash from parse-blocks) and refuses stale reads. Snapshot-first; every other block stays byte-identical',
+            'Surgically update ONE block in place by "path" (array of zero-based indexes into the parse-blocks tree, descending innerBlocks): replace its attributes ("attrs", full replacement) and/or its inner HTML ("inner_html", leaf blocks only, target a container\'s children by their own paths). Requires expected_hash (the content_hash from parse-blocks) and refuses stale reads. Snapshot-first; every other block stays byte-identical',
             [
                 'type'       => 'object',
                 'properties' => [
@@ -3606,7 +3606,7 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/update-page-settings',
             'pro',
-            'Merge settings non-destructively into a page\'s Elementor page settings (_elementor_page_settings): given keys are overwritten or added, all other settings survive. Post field keys (post_title, post_status, template, ...) are refused — use the post tools. Requires expected_hash = the settings_hash from get-elementor-data. Undoable via rollback-operation',
+            'Merge settings non-destructively into a page\'s Elementor page settings (_elementor_page_settings): given keys are overwritten or added, all other settings survive. Post field keys (post_title, post_status, template, ...) are refused, use the post tools. Requires expected_hash = the settings_hash from get-elementor-data. Undoable via rollback-operation',
             [
                 'type'       => 'object',
                 'properties' => [
@@ -4696,7 +4696,7 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/call-tool',
             'free',
-            'Invoke any wpmcp-registered tool by name with the given arguments object — the dispatch path for tools hidden from tools/list by compact mode. The target tool\'s own permission checks (capability, governance, identity scope, license), rate limit, input validation, and snapshot/rollback safety behavior all apply exactly as if it were called directly; this tool can never widen access. Refuses tools not registered by wpmcp and the meta-tools themselves',
+            'Invoke any wpmcp-registered tool by name with the given arguments object, the dispatch path for tools hidden from tools/list by compact mode. The target tool\'s own permission checks (capability, governance, identity scope, license), rate limit, input validation, and snapshot/rollback safety behavior all apply exactly as if it were called directly; this tool can never widen access. Refuses tools not registered by wpmcp and the meta-tools themselves',
             [
                 'type'       => 'object',
                 'properties' => [

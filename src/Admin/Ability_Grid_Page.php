@@ -258,7 +258,7 @@ class Ability_Grid_Page
         <div class="wrap">
             <h1><?php echo esc_html__('wpmcp: Abilities', 'wpmcp'); ?></h1>
             <p>
-                <?php echo esc_html__('Every ability the plugin declares, grouped by domain. Toggles write governance state (a narrowing layer: they can disable, or clear a disable — never bypass another layer), and every change is recorded in the governance audit log.', 'wpmcp'); ?>
+                <?php echo esc_html__('Every ability the plugin declares, grouped by domain. Toggles write governance state (a narrowing layer: they can disable, or clear a disable, never bypass another layer), and every change is recorded in the governance audit log.', 'wpmcp'); ?>
             </p>
 
             <?php if (isset($result['error'])) : ?>
