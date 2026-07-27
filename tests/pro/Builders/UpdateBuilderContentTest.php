@@ -29,8 +29,9 @@ class UpdateBuilderContentTest extends \WP_UnitTestCase
 
     private function make_bricks_page(array $elements): int
     {
+        // Store the way real Bricks does: a native array in postmeta.
         $post_id = self::factory()->post->create(['post_type' => 'page']);
-        update_post_meta($post_id, '_bricks_page_content_2', wp_json_encode($elements));
+        update_post_meta($post_id, '_bricks_page_content_2', $elements);
         return $post_id;
     }
 
@@ -54,8 +55,10 @@ class UpdateBuilderContentTest extends \WP_UnitTestCase
 
         $this->assertArrayHasKey('operation_id', $out);
 
-        $raw = json_decode(get_post_meta($post_id, '_bricks_page_content_2', true), true);
-        $this->assertSame($new_elements, $raw);
+        // Stored as a native array (what Bricks itself reads), NOT a JSON string.
+        $stored = get_post_meta($post_id, '_bricks_page_content_2', true);
+        $this->assertIsArray($stored, 'Bricks content must be stored as a native array so Bricks can read it');
+        $this->assertSame($new_elements, $stored);
     }
 
     public function test_writes_divi_content_and_reads_back(): void
@@ -167,6 +170,32 @@ class UpdateBuilderContentTest extends \WP_UnitTestCase
             'post_id' => $post_id,
             'builder' => 'bricks',
             'content' => '"just a string"',
+        ]);
+
+        $this->assertInstanceOf(\WP_Error::class, $out);
+        $this->assertSame('invalid_bricks_json', $out->get_error_code());
+    }
+
+    public function test_returns_wp_error_when_post_not_found(): void
+    {
+        $out = (new Update_Builder_Content())->handle([
+            'post_id' => 999999,
+            'builder' => 'bricks',
+            'content' => '[]',
+        ]);
+
+        $this->assertInstanceOf(\WP_Error::class, $out);
+        $this->assertSame('post_not_found', $out->get_error_code());
+    }
+
+    public function test_returns_wp_error_for_non_string_bricks_content(): void
+    {
+        $post_id = $this->make_bricks_page([['id' => 'a', 'name' => 'section']]);
+
+        $out = (new Update_Builder_Content())->handle([
+            'post_id' => $post_id,
+            'builder' => 'bricks',
+            'content' => [['id' => 'x']], // must be a JSON string, not an array
         ]);
 
         $this->assertInstanceOf(\WP_Error::class, $out);
