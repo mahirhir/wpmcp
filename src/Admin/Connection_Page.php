@@ -224,9 +224,9 @@ class Connection_Page
                 <?php echo esc_html__('Endpoint:', 'wpmcp'); ?>
                 <code><?php echo esc_html($endpoint); ?></code>
                 <?php if ($exposed) : ?>
-                    — <strong><?php echo esc_html__('exposed', 'wpmcp'); ?></strong>
+                    is <strong><?php echo esc_html__('exposed', 'wpmcp'); ?></strong>
                 <?php else : ?>
-                    — <strong><?php echo esc_html__('disabled by the master switch', 'wpmcp'); ?></strong>
+                    is <strong><?php echo esc_html__('disabled by the master switch', 'wpmcp'); ?></strong>
                 <?php endif; ?>
             </p>
             <form method="post">
@@ -257,7 +257,7 @@ class Connection_Page
 
             <h2><?php echo esc_html__('2. Create a connection', 'wpmcp'); ?></h2>
             <p>
-                <?php echo esc_html__('This creates a standard WordPress Application Password for the chosen user. Least privilege: prefer a dedicated user with only the role the agent needs — the agent can never do more than that user can, and wpmcp governance and tool capability gates narrow further from there. You can revoke the password below at any time.', 'wpmcp'); ?>
+                <?php echo esc_html__('This creates a standard WordPress Application Password for the chosen user. Least privilege: prefer a dedicated user with only the role the agent needs, the agent can never do more than that user can, and wpmcp governance and tool capability gates narrow further from there. You can revoke the password below at any time.', 'wpmcp'); ?>
             </p>
             <form method="post">
                 <input type="hidden" name="wpmcp_connection_action" value="provision">
@@ -286,7 +286,7 @@ class Connection_Page
             <?php if (isset($result['action']) && 'provision' === $result['action']) : ?>
                 <div class="notice notice-success">
                     <p>
-                        <strong><?php echo esc_html__('Application password created — shown only once.', 'wpmcp'); ?></strong>
+                        <strong><?php echo esc_html__('Application password created, shown only once.', 'wpmcp'); ?></strong>
                         <?php echo esc_html__('Copy it (or a filled config below) now; wpmcp does not store it and cannot show it again.', 'wpmcp'); ?>
                     </p>
                     <p>
@@ -311,13 +311,13 @@ class Connection_Page
                         <?php echo esc_html__('Download wpmcp.mcpb', 'wpmcp'); ?>
                     </a>
                     <span class="description">
-                        <?php echo esc_html__('Double-click to install in Claude Desktop, then enter the username and password above when prompted. The bundle contains no credentials — only this site\'s endpoint and a self-contained proxy.', 'wpmcp'); ?>
+                        <?php echo esc_html__('Double-click to install in Claude Desktop, then enter the username and password above when prompted. The bundle contains no credentials, only this site\'s endpoint and a self-contained proxy.', 'wpmcp'); ?>
                     </span>
                 </p>
 
                 <h2><?php echo esc_html__('4. Next steps', 'wpmcp'); ?></h2>
                 <ol>
-                    <li><?php echo esc_html__('Ask your client to list tools — you should see the wpmcp toolset.', 'wpmcp'); ?></li>
+                    <li><?php echo esc_html__('Ask your client to list tools, you should see the wpmcp toolset.', 'wpmcp'); ?></li>
                     <li><?php echo esc_html__('Every write is snapshotted first; review and roll back anything from the wpmcp History screen.', 'wpmcp'); ?></li>
                     <li><?php echo esc_html__('Narrow what agents may do per ability, domain, or operation via governance, and audit every decision on the Audit Log screen.', 'wpmcp'); ?></li>
                 </ol>
