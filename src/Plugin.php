@@ -1751,6 +1751,9 @@ final class Plugin
         $integrations = [
             new \WPMCP\Integrations\ACF_Integration(),
             new \WPMCP\Integrations\Gravity_Forms_Integration(),
+            new \WPMCP\Integrations\Formidable_Integration(),
+            new \WPMCP\Integrations\Contact_Form_7_Integration(),
+            new \WPMCP\Integrations\WPForms_Integration(),
         ];
 
         foreach ($integrations as $integration) {
