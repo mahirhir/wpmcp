@@ -23,8 +23,30 @@ class GetBuilderContentTest extends \WP_UnitTestCase
         parent::tearDown();
     }
 
-    public function test_returns_decoded_bricks_json_from_postmeta(): void
+    public function test_returns_native_bricks_array_from_postmeta(): void
     {
+        // Bricks stores its element tree as a NATIVE (serialized) array in
+        // _bricks_page_content_2 (see includes/ajax.php: update_post_meta with
+        // the $content array). This is how a real Bricks page looks on disk.
+        $post_id  = self::factory()->post->create(['post_type' => 'page']);
+        $elements = [
+            ['id' => 'sec01', 'name' => 'section', 'parent' => 0, 'children' => ['con01'], 'settings' => []],
+            ['id' => 'con01', 'name' => 'container', 'parent' => 'sec01', 'children' => ['hea01'], 'settings' => []],
+            ['id' => 'hea01', 'name' => 'heading', 'parent' => 'con01', 'children' => [], 'settings' => ['text' => 'Hello']],
+        ];
+        update_post_meta($post_id, '_bricks_page_content_2', $elements);
+
+        $out = (new Get_Builder_Content())->handle(['post_id' => $post_id]);
+
+        $this->assertIsArray($out);
+        $this->assertSame('bricks', $out['builder']);
+        $this->assertSame($elements, $out['content']);
+    }
+
+    public function test_tolerates_legacy_json_string_bricks_content(): void
+    {
+        // Older data (or an external writer) may have left a JSON string; the
+        // reader still decodes it rather than reporting the page as empty.
         $post_id = self::factory()->post->create(['post_type' => 'page']);
         $elements = [['id' => 'abc123', 'name' => 'section', 'children' => []]];
         update_post_meta($post_id, '_bricks_page_content_2', wp_json_encode($elements));
