@@ -13,6 +13,8 @@ class IntegrationAbilitiesRegistrationTest extends \WP_UnitTestCase
     private const TOOLS = [
         'wpmcp/acf-read',
         'wpmcp/acf-write',
+        'wpmcp/gravityforms-read',
+        'wpmcp/gravityforms-write',
     ];
 
     public function test_dispatcher_pair_is_registered_as_free_abilities(): void
