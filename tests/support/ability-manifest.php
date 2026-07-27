@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 200,
-    'free'      => 175,
+    'total'     => 202,
+    'free'      => 177,
     'pro'       => 25,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -191,6 +191,8 @@ return [
         'wpmcp/sideload-image' => 'free',
         'wpmcp/suggest-internal-links' => 'free',
         'wpmcp/switch-theme' => 'free',
+        'wpmcp/tec-read' => 'free',
+        'wpmcp/tec-write' => 'free',
         'wpmcp/trigger-backup' => 'free',
         'wpmcp/unschedule-event' => 'free',
         'wpmcp/update-block' => 'free',

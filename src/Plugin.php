@@ -1756,6 +1756,7 @@ final class Plugin
             new \WPMCP\Integrations\WPForms_Integration(),
             new \WPMCP\Integrations\Gravity_Tables_Integration(),
             new \WPMCP\Integrations\Modern_Events_Calendar_Integration(),
+            new \WPMCP\Integrations\The_Events_Calendar_Integration(),
         ];
 
         foreach ($integrations as $integration) {
