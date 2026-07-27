@@ -1750,6 +1750,7 @@ final class Plugin
     {
         $integrations = [
             new \WPMCP\Integrations\ACF_Integration(),
+            new \WPMCP\Integrations\Gravity_Forms_Integration(),
         ];
 
         foreach ($integrations as $integration) {
