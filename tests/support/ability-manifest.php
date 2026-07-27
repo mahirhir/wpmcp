@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 198,
-    'free'      => 173,
+    'total'     => 200,
+    'free'      => 175,
     'pro'       => 25,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -157,6 +157,8 @@ return [
         'wpmcp/list-transients' => 'free',
         'wpmcp/list-users' => 'free',
         'wpmcp/list-widgets' => 'free',
+        'wpmcp/mec-read' => 'free',
+        'wpmcp/mec-write' => 'free',
         'wpmcp/moderate-comment' => 'free',
         'wpmcp/move-block' => 'free',
         'wpmcp/move-element' => 'pro',

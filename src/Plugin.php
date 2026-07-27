@@ -1755,6 +1755,7 @@ final class Plugin
             new \WPMCP\Integrations\Contact_Form_7_Integration(),
             new \WPMCP\Integrations\WPForms_Integration(),
             new \WPMCP\Integrations\Gravity_Tables_Integration(),
+            new \WPMCP\Integrations\Modern_Events_Calendar_Integration(),
         ];
 
         foreach ($integrations as $integration) {

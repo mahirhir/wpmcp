@@ -23,6 +23,8 @@ class IntegrationAbilitiesRegistrationTest extends \WP_UnitTestCase
         'wpmcp/wpforms-write',
         'wpmcp/gravitytables-read',
         'wpmcp/gravitytables-write',
+        'wpmcp/mec-read',
+        'wpmcp/mec-write',
     ];
 
     public function test_dispatcher_pair_is_registered_as_free_abilities(): void
