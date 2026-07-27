@@ -1758,6 +1758,7 @@ final class Plugin
             new \WPMCP\Integrations\Modern_Events_Calendar_Integration(),
             new \WPMCP\Integrations\The_Events_Calendar_Integration(),
             new \WPMCP\Integrations\Give_Integration(),
+            new \WPMCP\Integrations\Paid_Memberships_Pro_Integration(),
         ];
 
         foreach ($integrations as $integration) {
