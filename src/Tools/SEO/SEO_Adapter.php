@@ -41,11 +41,37 @@ class SEO_Adapter
         'nofollow'      => 'rank_math_robots',
     ];
 
+    // SEOPress stores each field in its own postmeta key and encodes
+    // noindex/nofollow as the string 'yes' (verified against SEOPress source:
+    // update_post_meta(..., '_seopress_robots_index', 'yes')).
+    private const SEOPRESS_KEYS = [
+        'title'         => '_seopress_titles_title',
+        'description'   => '_seopress_titles_desc',
+        'focus_keyword' => '_seopress_analysis_target_kw',
+        'canonical'     => '_seopress_robots_canonical',
+        'noindex'       => '_seopress_robots_index',
+        'nofollow'      => '_seopress_robots_follow',
+    ];
+
+    /** Test seam: force the detected plugin. Guarded by WPMCP_TESTING. */
+    private static ?string $active_override = null;
+
+    public static function set_active_plugin_for_tests(?string $plugin): void
+    {
+        if (defined('WPMCP_TESTING') && WPMCP_TESTING) {
+            self::$active_override = $plugin;
+        }
+    }
+
     /**
-     * Which SEO plugin is active: 'yoast', 'rankmath', or '' when neither is.
+     * Which SEO plugin is active: 'yoast', 'rankmath', 'seopress', or '' when
+     * none is.
      */
     public static function active_plugin(): string
     {
+        if (null !== self::$active_override) {
+            return self::$active_override;
+        }
         if (defined('WPSEO_VERSION') || class_exists('WPSEO_Options')) {
             return 'yoast';
         }
@@ -81,6 +107,13 @@ class SEO_Adapter
             ];
         }
 
+        if ('seopress' === $active) {
+            return [
+                'plugin'  => 'seopress',
+                'name'    => 'SEOPress',
+                'version' => defined('SEOPRESS_VERSION') ? SEOPRESS_VERSION : '',
+            ];
+        }
         return null;
     }
 
@@ -100,6 +133,9 @@ class SEO_Adapter
             return self::RANKMATH_KEYS;
         }
 
+        if ('seopress' === $active) {
+            return self::SEOPRESS_KEYS;
+        }
         return [];
     }
 
@@ -139,6 +175,9 @@ class SEO_Adapter
             $robots           = is_array($robots) ? $robots : [];
             $out['noindex']   = in_array('noindex', $robots, true);
             $out['nofollow']  = in_array('nofollow', $robots, true);
+        } elseif ('seopress' === $active) {
+            $out['noindex']  = 'yes' === (string) get_post_meta($post_id, $keys['noindex'], true);
+            $out['nofollow'] = 'yes' === (string) get_post_meta($post_id, $keys['nofollow'], true);
         } else {
             $out['noindex']  = false;
             $out['nofollow'] = false;
@@ -195,6 +234,15 @@ class SEO_Adapter
             }
 
             update_post_meta($post_id, $keys['noindex'], $new_robots);
+            return;
+        }
+        if ('seopress' === $active) {
+            if (array_key_exists('noindex', $fields)) {
+                update_post_meta($post_id, $keys['noindex'], $fields['noindex'] ? 'yes' : '');
+            }
+            if (array_key_exists('nofollow', $fields)) {
+                update_post_meta($post_id, $keys['nofollow'], $fields['nofollow'] ? 'yes' : '');
+            }
         }
     }
 }
