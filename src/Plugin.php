@@ -1754,6 +1754,7 @@ final class Plugin
             new \WPMCP\Integrations\Formidable_Integration(),
             new \WPMCP\Integrations\Contact_Form_7_Integration(),
             new \WPMCP\Integrations\WPForms_Integration(),
+            new \WPMCP\Integrations\Gravity_Tables_Integration(),
         ];
 
         foreach ($integrations as $integration) {

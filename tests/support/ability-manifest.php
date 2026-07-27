@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 196,
-    'free'      => 171,
+    'total'     => 198,
+    'free'      => 173,
     'pro'       => 25,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -112,6 +112,8 @@ return [
         'wpmcp/get-widget-schema' => 'free',
         'wpmcp/gravityforms-read' => 'free',
         'wpmcp/gravityforms-write' => 'free',
+        'wpmcp/gravitytables-read' => 'free',
+        'wpmcp/gravitytables-write' => 'free',
         'wpmcp/import-content' => 'free',
         'wpmcp/import-stock-image' => 'free',
         'wpmcp/insert-pattern' => 'free',
