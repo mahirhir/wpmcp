@@ -27,6 +27,8 @@ class IntegrationAbilitiesRegistrationTest extends \WP_UnitTestCase
         'wpmcp/mec-write',
         'wpmcp/tec-read',
         'wpmcp/tec-write',
+        'wpmcp/give-read',
+        'wpmcp/give-write',
     ];
 
     public function test_dispatcher_pair_is_registered_as_free_abilities(): void
