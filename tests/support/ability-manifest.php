@@ -15,15 +15,18 @@
  */
 
 return [
-    'total'     => 219,
+    'total'     => 224,
     'free'      => 181,
-    'pro'       => 38,
+    'pro'       => 43,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
         'wpmcp/acf-write' => 'free',
         'wpmcp/activate-plugin' => 'free',
+        'wpmcp/add-atomic-widget' => 'pro',
         'wpmcp/add-block' => 'free',
         'wpmcp/add-container' => 'pro',
+        'wpmcp/add-div-block' => 'pro',
+        'wpmcp/add-flexbox' => 'pro',
         'wpmcp/add-menu-item' => 'free',
         'wpmcp/add-order-note' => 'free',
         'wpmcp/add-widget' => 'pro',
@@ -63,6 +66,7 @@ return [
         'wpmcp/delete-transient' => 'free',
         'wpmcp/describe-table' => 'free',
         'wpmcp/detect-builder' => 'pro',
+        'wpmcp/detect-elementor-version' => 'pro',
         'wpmcp/disable-maintenance' => 'free',
         'wpmcp/duplicate-block' => 'free',
         'wpmcp/duplicate-element' => 'pro',
@@ -210,6 +214,7 @@ return [
         'wpmcp/tec-write' => 'free',
         'wpmcp/trigger-backup' => 'free',
         'wpmcp/unschedule-event' => 'free',
+        'wpmcp/update-atomic-widget' => 'pro',
         'wpmcp/update-block' => 'free',
         'wpmcp/update-blocks' => 'free',
         'wpmcp/update-builder-content' => 'pro',
