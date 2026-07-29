@@ -15,9 +15,9 @@
  */
 
 return [
-    'total'     => 228,
+    'total'     => 233,
     'free'      => 181,
-    'pro'       => 47,
+    'pro'       => 52,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
         'wpmcp/acf-write' => 'free',
@@ -25,6 +25,7 @@ return [
         'wpmcp/add-atomic-widget' => 'pro',
         'wpmcp/add-block' => 'free',
         'wpmcp/add-container' => 'pro',
+        'wpmcp/add-custom-css' => 'pro',
         'wpmcp/add-div-block' => 'pro',
         'wpmcp/add-flexbox' => 'pro',
         'wpmcp/add-menu-item' => 'free',
@@ -45,6 +46,7 @@ return [
         'wpmcp/contactform7-read' => 'free',
         'wpmcp/contactform7-write' => 'free',
         'wpmcp/convert-html-to-blocks' => 'free',
+        'wpmcp/create-code-snippet' => 'pro',
         'wpmcp/create-identity' => 'free',
         'wpmcp/create-menu' => 'free',
         'wpmcp/create-popup' => 'pro',
@@ -53,6 +55,7 @@ return [
         'wpmcp/create-theme-template' => 'pro',
         'wpmcp/create-user' => 'free',
         'wpmcp/deactivate-plugin' => 'free',
+        'wpmcp/delete-code-snippet' => 'pro',
         'wpmcp/delete-comment' => 'free',
         'wpmcp/delete-file' => 'free',
         'wpmcp/delete-identity' => 'free',
@@ -90,6 +93,7 @@ return [
         'wpmcp/get-cache-status' => 'free',
         'wpmcp/get-comment' => 'free',
         'wpmcp/get-connection-info' => 'free',
+        'wpmcp/get-custom-css' => 'pro',
         'wpmcp/get-debug-config' => 'free',
         'wpmcp/get-debug-log' => 'free',
         'wpmcp/get-elementor-data' => 'pro',
@@ -139,6 +143,7 @@ return [
         'wpmcp/link-post-translations' => 'free',
         'wpmcp/list-backup-jobs' => 'free',
         'wpmcp/list-block-types' => 'free',
+        'wpmcp/list-code-snippets' => 'pro',
         'wpmcp/list-comments' => 'free',
         'wpmcp/list-cron-events' => 'free',
         'wpmcp/list-directory' => 'free',
