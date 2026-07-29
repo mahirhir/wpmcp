@@ -35,7 +35,11 @@ class Elementor_Page_Data
 
     public static function save(int $post_id, array $elements): void
     {
-        update_post_meta($post_id, '_elementor_data', wp_json_encode($elements));
+        // wp_slash before the write: update_post_meta runs wp_unslash on the
+        // value, which would strip the backslashes JSON adds to escape any
+        // embedded double quote (e.g. a dynamic-tag "[elementor-tag id=\"..\"]"
+        // value), corrupting the stored JSON. Slashing here makes the two cancel.
+        update_post_meta($post_id, '_elementor_data', wp_slash(wp_json_encode($elements)));
 
         // Invalidate Elementor's generated CSS cache so the change renders on
         // next view. Guarded: the files_manager service only exists when
