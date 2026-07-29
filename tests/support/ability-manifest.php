@@ -15,9 +15,9 @@
  */
 
 return [
-    'total'     => 214,
+    'total'     => 219,
     'free'      => 181,
-    'pro'       => 33,
+    'pro'       => 38,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
         'wpmcp/acf-write' => 'free',
@@ -46,6 +46,7 @@ return [
         'wpmcp/create-menu' => 'free',
         'wpmcp/create-post' => 'free',
         'wpmcp/create-product' => 'free',
+        'wpmcp/create-theme-template' => 'pro',
         'wpmcp/create-user' => 'free',
         'wpmcp/deactivate-plugin' => 'free',
         'wpmcp/delete-comment' => 'free',
@@ -58,6 +59,7 @@ return [
         'wpmcp/delete-product' => 'free',
         'wpmcp/delete-rows' => 'free',
         'wpmcp/delete-theme' => 'free',
+        'wpmcp/delete-theme-template' => 'pro',
         'wpmcp/delete-transient' => 'free',
         'wpmcp/describe-table' => 'free',
         'wpmcp/detect-builder' => 'pro',
@@ -109,6 +111,7 @@ return [
         'wpmcp/get-seo-status' => 'free',
         'wpmcp/get-settings' => 'free',
         'wpmcp/get-site-context' => 'free',
+        'wpmcp/get-theme-template' => 'pro',
         'wpmcp/get-tool-schema' => 'free',
         'wpmcp/get-top-pages' => 'free',
         'wpmcp/get-user' => 'free',
@@ -158,6 +161,7 @@ return [
         'wpmcp/list-sidebars' => 'free',
         'wpmcp/list-tables' => 'free',
         'wpmcp/list-taxonomies' => 'free',
+        'wpmcp/list-theme-templates' => 'pro',
         'wpmcp/list-themes' => 'free',
         'wpmcp/list-tool-catalog' => 'free',
         'wpmcp/list-tools' => 'free',
@@ -198,6 +202,7 @@ return [
         'wpmcp/set-post-meta' => 'free',
         'wpmcp/set-post-terms' => 'free',
         'wpmcp/set-stock-key' => 'free',
+        'wpmcp/set-template-conditions' => 'pro',
         'wpmcp/sideload-image' => 'free',
         'wpmcp/suggest-internal-links' => 'free',
         'wpmcp/switch-theme' => 'free',

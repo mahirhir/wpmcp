@@ -26,9 +26,57 @@ class Elementor_Template_Data
         'archive', 'loop-item', 'search-results', 'error-404',
     ];
 
+    /** Template types that are theme-builder LOCATIONS (vs. page/section/widget/popup). */
+    public const THEME_TYPES = [
+        'header', 'footer', 'single', 'single-post', 'single-page',
+        'archive', 'loop-item', 'search-results', 'error-404',
+    ];
+
     public static function is_template(int $id): bool
     {
         return $id > 0 && self::POST_TYPE === get_post_type($id);
+    }
+
+    public static function is_theme_type(string $type): bool
+    {
+        return in_array(sanitize_key($type), self::THEME_TYPES, true);
+    }
+
+    /**
+     * Normalize display conditions to Elementor's slash-string format. Accepts
+     * arrays of parts (['include','singular','post']) or slash strings
+     * ('include/singular/post'); returns deduped slash strings.
+     */
+    public static function normalize_conditions(array $conditions): array
+    {
+        $out = [];
+        foreach ($conditions as $condition) {
+            if (is_string($condition)) {
+                $parts = explode('/', $condition);
+            } elseif (is_array($condition)) {
+                $parts = array_values($condition);
+            } else {
+                continue;
+            }
+
+            $parts = array_values(array_filter(array_map(
+                static fn ($p) => sanitize_text_field((string) $p),
+                $parts
+            ), static fn ($p) => '' !== $p));
+
+            if ([] !== $parts) {
+                $out[] = implode('/', $parts);
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /** A template's stored display conditions ([] when none). */
+    public static function conditions(int $id): array
+    {
+        $stored = get_post_meta($id, '_elementor_conditions', true);
+        return is_array($stored) ? array_values($stored) : [];
     }
 
     public static function normalize_type(string $type): string

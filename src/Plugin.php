@@ -185,6 +185,11 @@ use WPMCP\Tools\Elementor\Export_Page;
 use WPMCP\Tools\Elementor\Save_As_Template;
 use WPMCP\Tools\Elementor\Apply_Template;
 use WPMCP\Tools\Elementor\Import_Template;
+use WPMCP\Tools\Elementor\Create_Theme_Template;
+use WPMCP\Tools\Elementor\Set_Template_Conditions;
+use WPMCP\Tools\Elementor\Get_Theme_Template;
+use WPMCP\Tools\Elementor\List_Theme_Templates;
+use WPMCP\Tools\Elementor\Delete_Theme_Template;
 use WPMCP\Tools\Elementor\Add_Container;
 use WPMCP\Tools\Elementor\Update_Container;
 use WPMCP\Tools\Elementor\Batch_Update;
@@ -3578,6 +3583,104 @@ final class Plugin
             'edit_posts',
             'elementor',
             'create'
+        ));
+
+        $create_theme_template = new Create_Theme_Template();
+
+        $registrar->register(new Ability(
+            'wpmcp/create-theme-template',
+            'pro',
+            'Create an Elementor theme-builder template: a header, footer, single, archive, loop-item, search-results, or error-404 elementor_library post, optionally seeded with elements and display conditions. Not snapshotted (a create destroys nothing); remove with delete-theme-template',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'title'         => [ 'type' => 'string' ],
+                    'template_type' => [ 'type' => 'string' ],
+                    'elements'      => [ 'type' => 'array' ],
+                    'conditions'    => [ 'type' => 'array' ],
+                ],
+                'required'   => [ 'title', 'template_type' ],
+            ],
+            [$create_theme_template, 'handle'],
+            'manage_options',
+            'elementor',
+            'create'
+        ));
+
+        $set_template_conditions = new Set_Template_Conditions();
+
+        $registrar->register(new Ability(
+            'wpmcp/set-template-conditions',
+            'pro',
+            'Set where an Elementor theme template renders: display conditions as arrays of parts (["include","singular","post"]) or slash strings ("include/general"). Uses Elementor Pro\'s conditions manager when present, else writes the same _elementor_conditions meta. Snapshot-first, undoable via rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'    => [ 'type' => 'integer' ],
+                    'conditions' => [ 'type' => 'array' ],
+                ],
+                'required'   => [ 'post_id', 'conditions' ],
+            ],
+            [$set_template_conditions, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
+
+        $get_theme_template = new Get_Theme_Template();
+
+        $registrar->register(new Ability(
+            'wpmcp/get-theme-template',
+            'pro',
+            'Read one Elementor library template: its type, display conditions, and element count. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$get_theme_template, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $list_theme_templates = new List_Theme_Templates();
+
+        $registrar->register(new Ability(
+            'wpmcp/list-theme-templates',
+            'pro',
+            'List Elementor theme-builder templates (header, footer, single, archive, ...), optionally filtered to one template_type, each with its display conditions. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'template_type' => [ 'type' => 'string' ],
+                ],
+            ],
+            [$list_theme_templates, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $delete_theme_template = new Delete_Theme_Template();
+
+        $registrar->register(new Ability(
+            'wpmcp/delete-theme-template',
+            'pro',
+            'Delete an Elementor library template by moving it to the trash (reversible through WordPress trash / restore-post), mirroring the default delete-post path',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$delete_theme_template, 'handle'],
+            'manage_options',
+            'elementor',
+            'delete'
         ));
 
         $this->register_elementor_structural_abilities($registrar);
