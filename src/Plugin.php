@@ -177,6 +177,10 @@ use WPMCP\Tools\Elementor\Add_Widget;
 use WPMCP\Tools\Elementor\Remove_Element;
 use WPMCP\Tools\Elementor\Move_Element;
 use WPMCP\Tools\Elementor\Generate_Widget;
+use WPMCP\Tools\Elementor\Get_Global_Settings;
+use WPMCP\Tools\Elementor\Update_Global_Colors;
+use WPMCP\Tools\Elementor\Update_Global_Typography;
+use WPMCP\Tools\Elementor\List_Global_Classes;
 use WPMCP\Tools\Elementor\Add_Container;
 use WPMCP\Tools\Elementor\Update_Container;
 use WPMCP\Tools\Elementor\Batch_Update;
@@ -3411,6 +3415,80 @@ final class Plugin
             'edit_posts',
             'elementor',
             'create'
+        ));
+
+        $get_global_settings = new Get_Global_Settings();
+
+        $registrar->register(new Ability(
+            'wpmcp/get-global-settings',
+            'pro',
+            'Read the active Elementor kit\'s global design tokens: system and custom colors and typography, with the four Elementor system tokens filled from defaults when the kit is untouched. Returns a settings_hash to chain a guarded write with update-global-colors / update-global-typography. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [],
+            ],
+            [$get_global_settings, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $update_global_colors = new Update_Global_Colors();
+
+        $registrar->register(new Ability(
+            'wpmcp/update-global-colors',
+            'pro',
+            'Update the active Elementor kit\'s global colors. system_colors entries patch the four system tokens by _id (color/title); custom_colors entries update a custom color by _id or append a new one. Colors are validated as hex. Requires expected_hash from get-global-settings. Undoable via rollback-operation since the kit\'s _elementor_page_settings is captured by the post snapshot',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'expected_hash' => [ 'type' => 'string' ],
+                    'system_colors' => [ 'type' => 'array' ],
+                    'custom_colors' => [ 'type' => 'array' ],
+                ],
+                'required'   => [ 'expected_hash' ],
+            ],
+            [$update_global_colors, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
+
+        $update_global_typography = new Update_Global_Typography();
+
+        $registrar->register(new Ability(
+            'wpmcp/update-global-typography',
+            'pro',
+            'Update the active Elementor kit\'s global typography. system_typography entries patch the four system tokens by _id; custom_typography entries update a token by _id or append a new one. Any typography_* field is merged in, and setting a font enables custom typography so the token renders. Requires expected_hash from get-global-settings. Undoable via rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'expected_hash'     => [ 'type' => 'string' ],
+                    'system_typography' => [ 'type' => 'array' ],
+                    'custom_typography' => [ 'type' => 'array' ],
+                ],
+                'required'   => [ 'expected_hash' ],
+            ],
+            [$update_global_typography, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
+
+        $list_global_classes = new List_Global_Classes();
+
+        $registrar->register(new Ability(
+            'wpmcp/list-global-classes',
+            'pro',
+            'List the Elementor global CSS classes stored on the active kit, in their stored order (empty when the feature has not been used). Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [],
+            ],
+            [$list_global_classes, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
         ));
 
         $this->register_elementor_structural_abilities($registrar);
