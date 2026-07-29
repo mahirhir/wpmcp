@@ -195,6 +195,10 @@ use WPMCP\Tools\Elementor\Add_Flexbox;
 use WPMCP\Tools\Elementor\Add_Div_Block;
 use WPMCP\Tools\Elementor\Add_Atomic_Widget;
 use WPMCP\Tools\Elementor\Update_Atomic_Widget;
+use WPMCP\Tools\Elementor\Create_Popup;
+use WPMCP\Tools\Elementor\Set_Popup_Settings;
+use WPMCP\Tools\Elementor\List_Dynamic_Tags;
+use WPMCP\Tools\Elementor\Set_Dynamic_Tag;
 use WPMCP\Tools\Elementor\Add_Container;
 use WPMCP\Tools\Elementor\Update_Container;
 use WPMCP\Tools\Elementor\Batch_Update;
@@ -3793,6 +3797,89 @@ final class Plugin
                 'required'   => [ 'post_id', 'expected_hash', 'element_id' ],
             ],
             [$update_atomic_widget, 'handle'],
+            'edit_posts',
+            'elementor',
+            'update'
+        ));
+
+        $create_popup = new Create_Popup();
+
+        $registrar->register(new Ability(
+            'wpmcp/create-popup',
+            'pro',
+            'Create an Elementor popup (an elementor_library post of type popup), optionally seeded with elements and trigger/display settings. Not snapshotted (a create destroys nothing); configure further with set-popup-settings, remove with delete-post',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'title'    => [ 'type' => 'string' ],
+                    'elements' => [ 'type' => 'array' ],
+                    'settings' => [ 'type' => 'object' ],
+                ],
+                'required'   => [ 'title' ],
+            ],
+            [$create_popup, 'handle'],
+            'manage_options',
+            'elementor',
+            'create'
+        ));
+
+        $set_popup_settings = new Set_Popup_Settings();
+
+        $registrar->register(new Ability(
+            'wpmcp/set-popup-settings',
+            'pro',
+            'Set an Elementor popup\'s trigger/display settings (open/close triggers, timing, advanced rules), merged into the popup\'s _elementor_page_settings. Snapshot-first, undoable via rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'  => [ 'type' => 'integer' ],
+                    'settings' => [ 'type' => 'object' ],
+                ],
+                'required'   => [ 'post_id', 'settings' ],
+            ],
+            [$set_popup_settings, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
+
+        $list_dynamic_tags = new List_Dynamic_Tags();
+
+        $registrar->register(new Ability(
+            'wpmcp/list-dynamic-tags',
+            'pro',
+            'List the Elementor dynamic tags registered on this site (name, title, group), optionally filtered by group. Most tags come from Elementor Pro, so the list is short or empty without it. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'group' => [ 'type' => 'string' ],
+                ],
+            ],
+            [$list_dynamic_tags, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $set_dynamic_tag = new Set_Dynamic_Tag();
+
+        $registrar->register(new Ability(
+            'wpmcp/set-dynamic-tag',
+            'pro',
+            'Bind an Elementor dynamic tag to an element setting, writing it into the element\'s settings[__dynamic__][setting_key] in Elementor\'s [elementor-tag ...] format and preserving other bindings. Requires expected_hash from get-elementor-data. Undoable via rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'       => [ 'type' => 'integer' ],
+                    'expected_hash' => [ 'type' => 'string' ],
+                    'element_id'    => [ 'type' => 'string' ],
+                    'setting_key'   => [ 'type' => 'string' ],
+                    'tag_name'      => [ 'type' => 'string' ],
+                    'tag_settings'  => [ 'type' => 'object' ],
+                ],
+                'required'   => [ 'post_id', 'expected_hash', 'element_id', 'setting_key', 'tag_name' ],
+            ],
+            [$set_dynamic_tag, 'handle'],
             'edit_posts',
             'elementor',
             'update'
