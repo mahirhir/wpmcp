@@ -1,0 +1,78 @@
+<?php
+
+namespace WPMCP\Tools\Elementor;
+
+use WPMCP\Safety\Mutation_Failed;
+use WPMCP\Safety\Rollback_Service;
+use WPMCP\Safety\Safe_Mutation;
+
+if (! defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * Add site-wide custom CSS through WordPress core Additional CSS
+ * (wp_update_custom_css_post), so it works on ANY site, Elementor Pro or not.
+ * Appends to the existing CSS by default, or replaces it with replace=true.
+ * When the Additional-CSS post already exists the write is snapshot-first, so
+ * the change is undoable via rollback-operation.
+ */
+class Add_Custom_Css
+{
+    public function handle(array $args)
+    {
+        $css = (string) ($args['css'] ?? '');
+        if ('' === trim($css)) {
+            return new \WP_Error('missing_css', 'A non-empty css string is required.');
+        }
+
+        $replace = ! empty($args['replace']);
+        $current = (string) wp_get_custom_css();
+        $next    = $replace ? $css : trim($current . "\n" . $css);
+
+        $existing = wp_get_custom_css_post();
+
+        // No existing Additional-CSS post: creating one destroys nothing, so
+        // write directly (mirrors create-post not being snapshot-wrapped).
+        if (! $existing) {
+            $result = wp_update_custom_css_post($next);
+            if (is_wp_error($result)) {
+                return $result;
+            }
+            return ['css' => wp_get_custom_css(), 'created' => true];
+        }
+
+        $post_id      = (int) $existing->ID;
+        $operation_id = wp_generate_uuid4();
+
+        try {
+            Safe_Mutation::run(
+                [
+                    'operation_id' => $operation_id,
+                    'object_type'  => 'post',
+                    'object_id'    => $post_id,
+                    'session_id'   => (string) ($args['session_id'] ?? 'default'),
+                    'tool_name'    => 'add-custom-css',
+                    'args'         => $args,
+                ],
+                function () use ($next) {
+                    wp_update_custom_css_post($next);
+                    return true;
+                },
+                function () use ($next) {
+                    return trim((string) wp_get_custom_css()) === trim($next);
+                }
+            );
+        } catch (Mutation_Failed $e) {
+            return new \WP_Error('mutation_failed', 'The custom CSS was not stored; it was rolled back.');
+        } catch (\Throwable $e) {
+            Rollback_Service::restore_operation($operation_id);
+            return new \WP_Error('mutation_failed', 'The write failed mid-save and was rolled back: ' . $e->getMessage());
+        }
+
+        return [
+            'operation_id' => $operation_id,
+            'css'          => wp_get_custom_css(),
+        ];
+    }
+}

@@ -199,6 +199,11 @@ use WPMCP\Tools\Elementor\Create_Popup;
 use WPMCP\Tools\Elementor\Set_Popup_Settings;
 use WPMCP\Tools\Elementor\List_Dynamic_Tags;
 use WPMCP\Tools\Elementor\Set_Dynamic_Tag;
+use WPMCP\Tools\Elementor\Add_Custom_Css;
+use WPMCP\Tools\Elementor\Get_Custom_Css;
+use WPMCP\Tools\Elementor\Create_Code_Snippet;
+use WPMCP\Tools\Elementor\List_Code_Snippets;
+use WPMCP\Tools\Elementor\Delete_Code_Snippet;
 use WPMCP\Tools\Elementor\Add_Container;
 use WPMCP\Tools\Elementor\Update_Container;
 use WPMCP\Tools\Elementor\Batch_Update;
@@ -3883,6 +3888,100 @@ final class Plugin
             'edit_posts',
             'elementor',
             'update'
+        ));
+
+        $add_custom_css = new Add_Custom_Css();
+
+        $registrar->register(new Ability(
+            'wpmcp/add-custom-css',
+            'pro',
+            'Add site-wide custom CSS through WordPress core Additional CSS, so it works on any site (Elementor Pro not required). Appends by default, or replaces with replace=true. Snapshot-first when the Additional-CSS post exists, so it is undoable via rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'css'     => [ 'type' => 'string' ],
+                    'replace' => [ 'type' => 'boolean' ],
+                ],
+                'required'   => [ 'css' ],
+            ],
+            [$add_custom_css, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
+
+        $get_custom_css = new Get_Custom_Css();
+
+        $registrar->register(new Ability(
+            'wpmcp/get-custom-css',
+            'pro',
+            'Read the site\'s WordPress core Additional CSS. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [],
+            ],
+            [$get_custom_css, 'handle'],
+            'manage_options',
+            'elementor',
+            'read'
+        ));
+
+        $create_code_snippet = new Create_Code_Snippet();
+
+        $registrar->register(new Ability(
+            'wpmcp/create-code-snippet',
+            'pro',
+            'Create an Elementor Custom Code snippet (an elementor_snippet post with _elementor_code / _elementor_location / _elementor_priority). location is wp_head, wp_body_open, or wp_footer. Stored on any site; renders where Elementor Pro Custom Code is active. Not snapshotted (a create destroys nothing); remove with delete-code-snippet',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'title'    => [ 'type' => 'string' ],
+                    'code'     => [ 'type' => 'string' ],
+                    'location' => [ 'type' => 'string' ],
+                    'priority' => [ 'type' => 'integer' ],
+                    'status'   => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'code' ],
+            ],
+            [$create_code_snippet, 'handle'],
+            'manage_options',
+            'elementor',
+            'create'
+        ));
+
+        $list_code_snippets = new List_Code_Snippets();
+
+        $registrar->register(new Ability(
+            'wpmcp/list-code-snippets',
+            'pro',
+            'List the Elementor Custom Code snippets stored on this site (elementor_snippet posts) with their location, priority, and code. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [],
+            ],
+            [$list_code_snippets, 'handle'],
+            'manage_options',
+            'elementor',
+            'read'
+        ));
+
+        $delete_code_snippet = new Delete_Code_Snippet();
+
+        $registrar->register(new Ability(
+            'wpmcp/delete-code-snippet',
+            'pro',
+            'Delete an Elementor Custom Code snippet by moving it to the trash (reversible through WordPress trash / restore-post), mirroring the default delete-post path',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'snippet_id' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'snippet_id' ],
+            ],
+            [$delete_code_snippet, 'handle'],
+            'manage_options',
+            'elementor',
+            'delete'
         ));
 
         $this->register_elementor_structural_abilities($registrar);
