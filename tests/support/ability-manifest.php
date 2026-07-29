@@ -15,9 +15,9 @@
  */
 
 return [
-    'total'     => 210,
+    'total'     => 214,
     'free'      => 181,
-    'pro'       => 29,
+    'pro'       => 33,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
         'wpmcp/acf-write' => 'free',
@@ -30,6 +30,7 @@ return [
         'wpmcp/analyze-accessibility' => 'pro',
         'wpmcp/analyze-performance' => 'free',
         'wpmcp/analyze-seo' => 'pro',
+        'wpmcp/apply-template' => 'pro',
         'wpmcp/assign-menu-to-location' => 'free',
         'wpmcp/batch-update' => 'pro',
         'wpmcp/build-page' => 'free',
@@ -67,6 +68,7 @@ return [
         'wpmcp/edit-file' => 'free',
         'wpmcp/enable-maintenance' => 'free',
         'wpmcp/export-content' => 'free',
+        'wpmcp/export-page' => 'pro',
         'wpmcp/extract-content' => 'pro',
         'wpmcp/find-element' => 'pro',
         'wpmcp/find-orphan-posts' => 'free',
@@ -119,6 +121,7 @@ return [
         'wpmcp/gravitytables-write' => 'free',
         'wpmcp/import-content' => 'free',
         'wpmcp/import-stock-image' => 'free',
+        'wpmcp/import-template' => 'pro',
         'wpmcp/insert-pattern' => 'free',
         'wpmcp/insert-row' => 'free',
         'wpmcp/insert-stock-image' => 'pro',
@@ -183,6 +186,7 @@ return [
         'wpmcp/run-event' => 'free',
         'wpmcp/run-php-snippet' => 'pro',
         'wpmcp/run-wp-cli' => 'pro',
+        'wpmcp/save-as-template' => 'pro',
         'wpmcp/scan-security' => 'free',
         'wpmcp/schedule-event' => 'free',
         'wpmcp/search-files' => 'free',

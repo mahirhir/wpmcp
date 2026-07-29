@@ -181,6 +181,10 @@ use WPMCP\Tools\Elementor\Get_Global_Settings;
 use WPMCP\Tools\Elementor\Update_Global_Colors;
 use WPMCP\Tools\Elementor\Update_Global_Typography;
 use WPMCP\Tools\Elementor\List_Global_Classes;
+use WPMCP\Tools\Elementor\Export_Page;
+use WPMCP\Tools\Elementor\Save_As_Template;
+use WPMCP\Tools\Elementor\Apply_Template;
+use WPMCP\Tools\Elementor\Import_Template;
 use WPMCP\Tools\Elementor\Add_Container;
 use WPMCP\Tools\Elementor\Update_Container;
 use WPMCP\Tools\Elementor\Batch_Update;
@@ -3489,6 +3493,91 @@ final class Plugin
             'edit_posts',
             'elementor',
             'read'
+        ));
+
+        $export_page = new Export_Page();
+
+        $registrar->register(new Ability(
+            'wpmcp/export-page',
+            'pro',
+            'Export a page\'s Elementor content to a portable structure (content element tree + page_settings + type + version), the envelope import-template accepts, so a design can move between pages or sites. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$export_page, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $save_as_template = new Save_As_Template();
+
+        $registrar->register(new Ability(
+            'wpmcp/save-as-template',
+            'pro',
+            'Save a page\'s Elementor content as a reusable elementor_library template of the given template_type (page, section, container, header, footer, single, archive, popup, ...; defaults to page). Creating a template destroys nothing, so it is not snapshotted; remove it with delete-post',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'       => [ 'type' => 'integer' ],
+                    'title'         => [ 'type' => 'string' ],
+                    'template_type' => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'post_id', 'title' ],
+            ],
+            [$save_as_template, 'handle'],
+            'edit_posts',
+            'elementor',
+            'create'
+        ));
+
+        $apply_template = new Apply_Template();
+
+        $registrar->register(new Ability(
+            'wpmcp/apply-template',
+            'pro',
+            'Apply a library template\'s content to a page. The template tree is copied with freshly regenerated ids (never colliding with the page) and either appended (default, optionally under parent_id at position) or used to replace the whole page (mode=replace). Requires expected_hash from get-elementor-data. Undoable via rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'       => [ 'type' => 'integer' ],
+                    'template_id'   => [ 'type' => 'integer' ],
+                    'expected_hash' => [ 'type' => 'string' ],
+                    'mode'          => [ 'type' => 'string' ],
+                    'parent_id'     => [ 'type' => 'string' ],
+                    'position'      => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'post_id', 'template_id', 'expected_hash' ],
+            ],
+            [$apply_template, 'handle'],
+            'edit_posts',
+            'elementor',
+            'update'
+        ));
+
+        $import_template = new Import_Template();
+
+        $registrar->register(new Ability(
+            'wpmcp/import-template',
+            'pro',
+            'Create an elementor_library template from a portable export structure (the content envelope export-page produces), so a design can be round-tripped into a reusable template, including across sites. Not snapshotted (a create destroys nothing); remove with delete-post',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'export'        => [ 'type' => 'object' ],
+                    'title'         => [ 'type' => 'string' ],
+                    'template_type' => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'export' ],
+            ],
+            [$import_template, 'handle'],
+            'edit_posts',
+            'elementor',
+            'create'
         ));
 
         $this->register_elementor_structural_abilities($registrar);

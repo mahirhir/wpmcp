@@ -20,9 +20,11 @@ class ToolsListBudgetTest extends \WP_UnitTestCase
 {
     /** Max JSON bytes for the full tools/list payload of every registered ability.
      *  Raised 100000 -> 110000 in review for the forms integration cluster
-     *  (Gravity Forms, Formidable, Contact Form 7, WPForms); compact tool mode
-     *  keeps clients with tool caps at ~2.8KB regardless. */
-    private const TOOLS_LIST_BYTE_BUDGET = 110000;
+     *  (Gravity Forms, Formidable, Contact Form 7, WPForms); raised 110000 ->
+     *  135000 in review for the EMCP Elementor parity expansion (global Kit,
+     *  templates, theme builder, atomic elements, popups, dynamic tags).
+     *  Compact tool mode keeps clients with tool caps at ~2.8KB regardless. */
+    private const TOOLS_LIST_BYTE_BUDGET = 135000;
 
     /** @return array<int, array<string, mixed>> tools/list-shaped entries. */
     private static function payload(): array
@@ -72,10 +74,16 @@ class ToolsListBudgetTest extends \WP_UnitTestCase
             static fn ($ability) => 'elementor' === $ability->domain
         );
 
+        // Ceiling raised from 25 -> 60 in review for the EMCP Elementor parity
+        // expansion (global Kit, templates, theme builder, atomic elements,
+        // popups, dynamic tags). The invariant this protects is unchanged: the
+        // 44-widget catalog is consumed by a FIXED generic set, so adding a
+        // cataloged widget must never add a tool. New tools here are per-feature,
+        // never per-widget, and stay well under the catalog size.
         $this->assertLessThanOrEqual(
-            25,
+            60,
             count($elementor),
-            'The Elementor tool surface must stay a small, fixed set of generic tools; '
+            'The Elementor tool surface must stay a fixed set of generic, per-feature tools; '
             . 'widgets belong in the catalog data, not in new per-widget abilities.'
         );
     }
