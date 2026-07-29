@@ -1,0 +1,209 @@
+<?php
+
+namespace WPMCP\Tests\Pro\Elementor;
+
+use WPMCP\Tools\Elementor\Detect_Elementor_Version;
+use WPMCP\Tools\Elementor\Add_Flexbox;
+use WPMCP\Tools\Elementor\Add_Div_Block;
+use WPMCP\Tools\Elementor\Add_Atomic_Widget;
+use WPMCP\Tools\Elementor\Update_Atomic_Widget;
+
+/**
+ * Cluster 4 (EMCP parity): Elementor 4.0+ atomic elements.
+ *
+ * Atomic containers use elType e-flexbox / e-div-block; atomic widgets are
+ * elType widget with an e-* widgetType (e-heading, e-paragraph, ...). Their
+ * settings are typed props: { "$$type": "string", "value": ... }. These write
+ * raw to `_elementor_data` snapshot-first (not through Document::save, which
+ * would drop atomic elements when the Editor-V4 experiment is off), so the
+ * $$type props round-trip exactly and the change stays undoable.
+ */
+class AtomicElementsTest extends Structural_Harness
+{
+    private function atomic_page(): int
+    {
+        $post_id = self::factory()->post->create(['post_type' => 'page']);
+        update_post_meta($post_id, '_elementor_data', wp_json_encode([[
+            'id'       => 'flex001',
+            'elType'   => 'e-flexbox',
+            'settings' => ['classes' => ['$$type' => 'classes', 'value' => []]],
+            'elements' => [],
+        ]]));
+        update_post_meta($post_id, '_elementor_edit_mode', 'builder');
+        return $post_id;
+    }
+
+    // ---- detect-elementor-version -------------------------------------------
+
+    public function test_detect_version_reports_atomic_support(): void
+    {
+        $out = (new Detect_Elementor_Version())->handle([]);
+
+        $this->assertIsArray($out);
+        $this->assertSame(ELEMENTOR_VERSION, $out['elementor_version']);
+        $this->assertArrayHasKey('supports_atomic', $out);
+        $this->assertTrue($out['supports_atomic'], 'Elementor 4.x test env supports atomic elements.');
+        $this->assertSame('atomic', $out['recommended_mode']);
+    }
+
+    // ---- add-flexbox / add-div-block ----------------------------------------
+
+    public function test_add_flexbox_inserts_atomic_container(): void
+    {
+        $post_id = $this->make_page([]);
+
+        $out = (new Add_Flexbox())->handle([
+            'post_id'       => $post_id,
+            'expected_hash' => $this->data_hash($post_id),
+        ]);
+
+        $this->assertIsArray($out);
+        $this->assertArrayHasKey('operation_id', $out);
+        $tree = $this->tree($post_id);
+        $this->assertSame('e-flexbox', $tree[0]['elType']);
+        $this->assertSame('classes', $tree[0]['settings']['classes']['$$type']);
+        $this->assertMatchesRegularExpression('/^[0-9a-z]{7}$/', $tree[0]['id']);
+    }
+
+    public function test_add_div_block_inserts_atomic_container(): void
+    {
+        $post_id = $this->make_page([]);
+
+        (new Add_Div_Block())->handle([
+            'post_id'       => $post_id,
+            'expected_hash' => $this->data_hash($post_id),
+        ]);
+
+        $this->assertSame('e-div-block', $this->tree($post_id)[0]['elType']);
+    }
+
+    // ---- add-atomic-widget --------------------------------------------------
+
+    public function test_add_atomic_heading_from_params(): void
+    {
+        $post_id = $this->atomic_page();
+
+        $out = (new Add_Atomic_Widget())->handle([
+            'post_id'       => $post_id,
+            'parent_id'     => 'flex001',
+            'widget_type'   => 'e-heading',
+            'params'        => ['title' => 'Hello world', 'tag' => 'h1'],
+            'expected_hash' => $this->data_hash($post_id),
+        ]);
+
+        $this->assertIsArray($out);
+        $widget = $this->tree($post_id)[0]['elements'][0];
+        $this->assertSame('widget', $widget['elType']);
+        $this->assertSame('e-heading', $widget['widgetType']);
+        $this->assertSame('html-v3', $widget['settings']['title']['$$type']);
+        $this->assertSame('Hello world', $widget['settings']['title']['value']['content']['value']);
+        $this->assertSame('h1', $widget['settings']['tag']['value']);
+    }
+
+    public function test_add_atomic_paragraph_uses_paragraph_prop(): void
+    {
+        $post_id = $this->atomic_page();
+
+        (new Add_Atomic_Widget())->handle([
+            'post_id'       => $post_id,
+            'parent_id'     => 'flex001',
+            'widget_type'   => 'e-paragraph',
+            'params'        => ['content' => 'Body copy'],
+            'expected_hash' => $this->data_hash($post_id),
+        ]);
+
+        $settings = $this->tree($post_id)[0]['elements'][0]['settings'];
+        // e-paragraph's content prop is named `paragraph`, never `text`.
+        $this->assertArrayHasKey('paragraph', $settings);
+        $this->assertArrayNotHasKey('text', $settings);
+        $this->assertSame('Body copy', $settings['paragraph']['value']['content']['value']);
+    }
+
+    public function test_add_atomic_widget_accepts_raw_settings(): void
+    {
+        $post_id = $this->atomic_page();
+
+        (new Add_Atomic_Widget())->handle([
+            'post_id'       => $post_id,
+            'parent_id'     => 'flex001',
+            'widget_type'   => 'e-custom',
+            'settings'      => ['foo' => ['$$type' => 'string', 'value' => 'bar']],
+            'expected_hash' => $this->data_hash($post_id),
+        ]);
+
+        $widget = $this->tree($post_id)[0]['elements'][0];
+        $this->assertSame('e-custom', $widget['widgetType']);
+        $this->assertSame('bar', $widget['settings']['foo']['value']);
+    }
+
+    public function test_add_atomic_widget_rejects_stale_hash(): void
+    {
+        $post_id = $this->atomic_page();
+
+        $out = (new Add_Atomic_Widget())->handle([
+            'post_id'       => $post_id,
+            'parent_id'     => 'flex001',
+            'widget_type'   => 'e-heading',
+            'params'        => ['title' => 'x'],
+            'expected_hash' => 'stale',
+        ]);
+
+        $this->assertInstanceOf(\WP_Error::class, $out);
+        $this->assertSame('stale_expected_hash', $out->get_error_code());
+    }
+
+    public function test_add_atomic_widget_requires_widget_type(): void
+    {
+        $post_id = $this->atomic_page();
+
+        $out = (new Add_Atomic_Widget())->handle([
+            'post_id'       => $post_id,
+            'expected_hash' => $this->data_hash($post_id),
+        ]);
+        $this->assertInstanceOf(\WP_Error::class, $out);
+        $this->assertSame('missing_widget_type', $out->get_error_code());
+    }
+
+    // ---- update-atomic-widget -----------------------------------------------
+
+    public function test_update_atomic_widget_merges_params(): void
+    {
+        $post_id = self::factory()->post->create(['post_type' => 'page']);
+        update_post_meta($post_id, '_elementor_data', wp_json_encode([[
+            'id'         => 'head001',
+            'elType'     => 'widget',
+            'widgetType' => 'e-heading',
+            'settings'   => [
+                'title' => ['$$type' => 'html-v3', 'value' => ['content' => ['$$type' => 'string', 'value' => 'Old'], 'children' => []]],
+                'tag'   => ['$$type' => 'string', 'value' => 'h2'],
+            ],
+            'elements'   => [],
+        ]]));
+        update_post_meta($post_id, '_elementor_edit_mode', 'builder');
+
+        (new Update_Atomic_Widget())->handle([
+            'post_id'       => $post_id,
+            'element_id'    => 'head001',
+            'params'        => ['title' => 'New title'],
+            'expected_hash' => $this->data_hash($post_id),
+        ]);
+
+        $settings = $this->tree($post_id)[0]['settings'];
+        $this->assertSame('New title', $settings['title']['value']['content']['value']);
+        // Untouched prop survives.
+        $this->assertSame('h2', $settings['tag']['value']);
+    }
+
+    public function test_update_atomic_widget_rejects_missing_element(): void
+    {
+        $post_id = $this->atomic_page();
+        $out = (new Update_Atomic_Widget())->handle([
+            'post_id'       => $post_id,
+            'element_id'    => 'nope999',
+            'params'        => ['title' => 'x'],
+            'expected_hash' => $this->data_hash($post_id),
+        ]);
+        $this->assertInstanceOf(\WP_Error::class, $out);
+        $this->assertSame('element_not_found', $out->get_error_code());
+    }
+}
