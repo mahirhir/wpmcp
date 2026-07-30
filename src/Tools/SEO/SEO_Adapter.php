@@ -53,6 +53,18 @@ class SEO_Adapter
         'nofollow'      => '_seopress_robots_follow',
     ];
 
+    // The SEO Framework stores each field in its own _genesis_* postmeta key
+    // and encodes noindex/nofollow as the string '1' (like Yoast). It has no
+    // focus-keyword field, so that slot is empty and skipped on read/write.
+    private const THE_SEO_FRAMEWORK_KEYS = [
+        'title'         => '_genesis_title',
+        'description'   => '_genesis_description',
+        'focus_keyword' => '',
+        'canonical'     => '_genesis_canonical_uri',
+        'noindex'       => '_genesis_noindex',
+        'nofollow'      => '_genesis_nofollow',
+    ];
+
     /** Test seam: force the detected plugin. Guarded by WPMCP_TESTING. */
     private static ?string $active_override = null;
 
@@ -78,6 +90,10 @@ class SEO_Adapter
 
         if (class_exists('RankMath')) {
             return 'rankmath';
+        }
+
+        if (defined('THE_SEO_FRAMEWORK_VERSION') || function_exists('tsf')) {
+            return 'seoframework';
         }
 
         return '';
@@ -114,6 +130,14 @@ class SEO_Adapter
                 'version' => defined('SEOPRESS_VERSION') ? SEOPRESS_VERSION : '',
             ];
         }
+
+        if ('seoframework' === $active) {
+            return [
+                'plugin'  => 'seoframework',
+                'name'    => 'The SEO Framework',
+                'version' => defined('THE_SEO_FRAMEWORK_VERSION') ? THE_SEO_FRAMEWORK_VERSION : '',
+            ];
+        }
         return null;
     }
 
@@ -136,7 +160,17 @@ class SEO_Adapter
         if ('seopress' === $active) {
             return self::SEOPRESS_KEYS;
         }
+
+        if ('seoframework' === $active) {
+            return self::THE_SEO_FRAMEWORK_KEYS;
+        }
         return [];
+    }
+
+    /** Read one postmeta value as a string, or '' when the plugin has no key for the field. */
+    private static function read_meta(int $post_id, string $key): string
+    {
+        return '' === $key ? '' : (string) get_post_meta($post_id, $key, true);
     }
 
     /**
@@ -161,13 +195,13 @@ class SEO_Adapter
         }
 
         $out = [
-            'title'         => (string) get_post_meta($post_id, $keys['title'], true),
-            'description'   => (string) get_post_meta($post_id, $keys['description'], true),
-            'focus_keyword' => (string) get_post_meta($post_id, $keys['focus_keyword'], true),
-            'canonical'     => (string) get_post_meta($post_id, $keys['canonical'], true),
+            'title'         => self::read_meta($post_id, $keys['title']),
+            'description'   => self::read_meta($post_id, $keys['description']),
+            'focus_keyword' => self::read_meta($post_id, $keys['focus_keyword']),
+            'canonical'     => self::read_meta($post_id, $keys['canonical']),
         ];
 
-        if ('yoast' === $active) {
+        if ('yoast' === $active || 'seoframework' === $active) {
             $out['noindex']  = '1' === (string) get_post_meta($post_id, $keys['noindex'], true);
             $out['nofollow'] = '1' === (string) get_post_meta($post_id, $keys['nofollow'], true);
         } elseif ('rankmath' === $active) {
@@ -204,12 +238,12 @@ class SEO_Adapter
         }
 
         foreach (['title', 'description', 'focus_keyword', 'canonical'] as $field) {
-            if (array_key_exists($field, $fields)) {
+            if (array_key_exists($field, $fields) && '' !== $keys[$field]) {
                 update_post_meta($post_id, $keys[$field], (string) $fields[$field]);
             }
         }
 
-        if ('yoast' === $active) {
+        if ('yoast' === $active || 'seoframework' === $active) {
             if (array_key_exists('noindex', $fields)) {
                 update_post_meta($post_id, $keys['noindex'], $fields['noindex'] ? '1' : '0');
             }
