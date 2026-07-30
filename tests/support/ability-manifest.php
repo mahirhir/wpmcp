@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 237,
-    'free'      => 185,
+    'total'     => 239,
+    'free'      => 187,
     'pro'       => 52,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -82,6 +82,8 @@ return [
         'wpmcp/extract-content' => 'pro',
         'wpmcp/find-element' => 'pro',
         'wpmcp/find-orphan-posts' => 'free',
+        'wpmcp/fluentforms-read' => 'free',
+        'wpmcp/fluentforms-write' => 'free',
         'wpmcp/formidable-read' => 'free',
         'wpmcp/formidable-write' => 'free',
         'wpmcp/generate-widget' => 'pro',
