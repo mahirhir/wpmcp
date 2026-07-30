@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 233,
-    'free'      => 181,
+    'total'     => 237,
+    'free'      => 185,
     'pro'       => 52,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -181,9 +181,13 @@ return [
         'wpmcp/list-widgets' => 'free',
         'wpmcp/mec-read' => 'free',
         'wpmcp/mec-write' => 'free',
+        'wpmcp/metabox-read' => 'free',
+        'wpmcp/metabox-write' => 'free',
         'wpmcp/moderate-comment' => 'free',
         'wpmcp/move-block' => 'free',
         'wpmcp/move-element' => 'pro',
+        'wpmcp/ninjaforms-read' => 'free',
+        'wpmcp/ninjaforms-write' => 'free',
         'wpmcp/parse-blocks' => 'free',
         'wpmcp/pmpro-read' => 'free',
         'wpmcp/pmpro-write' => 'free',
