@@ -96,6 +96,10 @@ class SEO_Adapter
             return 'seoframework';
         }
 
+        if (defined('SURERANK_VERSION')) {
+            return 'surerank';
+        }
+
         return '';
     }
 
@@ -138,6 +142,14 @@ class SEO_Adapter
                 'version' => defined('THE_SEO_FRAMEWORK_VERSION') ? THE_SEO_FRAMEWORK_VERSION : '',
             ];
         }
+
+        if ('surerank' === $active) {
+            return [
+                'plugin'  => 'surerank',
+                'name'    => 'SureRank',
+                'version' => defined('SURERANK_VERSION') ? SURERANK_VERSION : '',
+            ];
+        }
         return null;
     }
 
@@ -174,12 +186,62 @@ class SEO_Adapter
     }
 
     /**
+     * SureRank stores every field inside a single serialized `_surerank_meta`
+     * post-meta array (page_title, page_description, canonical_url, and
+     * post_no_index / post_no_follow encoded as 'yes'/'no'), so it needs
+     * dedicated read/write branches rather than the per-field key map.
+     */
+    private static function get_surerank_meta(int $post_id): array
+    {
+        $data = get_post_meta($post_id, '_surerank_meta', true);
+        $data = is_array($data) ? $data : [];
+
+        return [
+            'title'         => (string) ($data['page_title'] ?? ''),
+            'description'   => (string) ($data['page_description'] ?? ''),
+            'focus_keyword' => '',
+            'canonical'     => (string) ($data['canonical_url'] ?? ''),
+            'noindex'       => 'yes' === ($data['post_no_index'] ?? ''),
+            'nofollow'      => 'yes' === ($data['post_no_follow'] ?? ''),
+        ];
+    }
+
+    private static function update_surerank_meta(int $post_id, array $fields): void
+    {
+        $data = get_post_meta($post_id, '_surerank_meta', true);
+        $data = is_array($data) ? $data : [];
+
+        $map = [
+            'title'       => 'page_title',
+            'description' => 'page_description',
+            'canonical'   => 'canonical_url',
+        ];
+        foreach ($map as $field => $sub) {
+            if (array_key_exists($field, $fields)) {
+                $data[$sub] = (string) $fields[$field];
+            }
+        }
+        if (array_key_exists('noindex', $fields)) {
+            $data['post_no_index'] = $fields['noindex'] ? 'yes' : 'no';
+        }
+        if (array_key_exists('nofollow', $fields)) {
+            $data['post_no_follow'] = $fields['nofollow'] ? 'yes' : 'no';
+        }
+
+        update_post_meta($post_id, '_surerank_meta', $data);
+    }
+
+    /**
      * Read the neutral SEO field set for a post from the active plugin's
      * postmeta keys. noindex/nofollow are normalized to booleans regardless
      * of how the active plugin stores them on the post.
      */
     public static function get_meta(int $post_id): array
     {
+        if ('surerank' === self::active_plugin()) {
+            return self::get_surerank_meta($post_id);
+        }
+
         $keys   = self::meta_keys();
         $active = self::active_plugin();
 
@@ -230,6 +292,11 @@ class SEO_Adapter
      */
     public static function update_meta(int $post_id, array $fields): void
     {
+        if ('surerank' === self::active_plugin()) {
+            self::update_surerank_meta($post_id, $fields);
+            return;
+        }
+
         $keys   = self::meta_keys();
         $active = self::active_plugin();
 
