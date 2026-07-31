@@ -280,6 +280,10 @@ final class Plugin
             if (function_exists('wp_register_ability_category')) {
                 add_action('wp_abilities_api_categories_init', [$this, 'register_ability_category']);
             }
+            // Data-driven custom widget builder: register the wpmcp_widget CPT
+            // and register active specs as Elementor widgets at runtime (no eval).
+            add_action('init', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type']);
+            add_action('elementor/widgets/register', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Registry', 'register']);
             add_action('admin_menu', [$this, 'register_admin_menu']);
             add_action('wp_ajax_wpmcp_restore', [new Restore_Controller(), 'handle']);
             // The WP-Cron executor for trigger-backup's scheduled events: runs
@@ -1762,6 +1766,46 @@ final class Plugin
         $this->register_analytics_abilities($registrar);
         $this->register_dispatch_abilities($registrar);
         $this->register_integration_abilities($registrar);
+        $this->register_widget_builder_abilities($registrar);
+    }
+
+    /**
+     * The data-driven custom Elementor widget builder (EMCP parity, no eval):
+     * store/validate/list widget specs that Dynamic_Widget renders at runtime.
+     * All PRO, manage_options + unfiltered_html-class authority (site-wide
+     * markup authoring), domain 'elementor'.
+     */
+    private function register_widget_builder_abilities(Registrar $registrar): void
+    {
+        $spec_schema = [ 'type' => 'object' ];
+
+        $tools = [
+            ['create-custom-widget', 'create', new \WPMCP\Tools\WidgetBuilder\Create_Custom_Widget(), 'Create a custom Elementor widget from a data spec (title, controls, template with {{name}} placeholders). Validated, stored as a wpmcp_widget post, and registered as a real Elementor widget at runtime by a single data-driven widget (no code generation, no eval). Remove with delete-custom-widget', ['spec' => $spec_schema], ['spec']],
+            ['update-custom-widget', 'update', new \WPMCP\Tools\WidgetBuilder\Update_Custom_Widget(), 'Replace a custom widget\'s spec by id (re-validated before it is stored)', ['widget_id' => ['type' => 'integer'], 'spec' => $spec_schema], ['widget_id', 'spec']],
+            ['get-custom-widget', 'read', new \WPMCP\Tools\WidgetBuilder\Get_Custom_Widget(), 'Read one custom widget\'s stored spec by id. Read-only', ['widget_id' => ['type' => 'integer']], ['widget_id']],
+            ['list-custom-widgets', 'read', new \WPMCP\Tools\WidgetBuilder\List_Custom_Widgets(), 'List the custom widgets on this site (id, name, title, active/inactive). Read-only', [], []],
+            ['delete-custom-widget', 'delete', new \WPMCP\Tools\WidgetBuilder\Delete_Custom_Widget(), 'Delete a custom widget by moving it to the trash (reversible via restore-post)', ['widget_id' => ['type' => 'integer']], ['widget_id']],
+            ['set-widget-status', 'update', new \WPMCP\Tools\WidgetBuilder\Set_Widget_Status(), 'Enable (publish) or disable (draft) a custom widget by id', ['widget_id' => ['type' => 'integer'], 'status' => ['type' => 'string']], ['widget_id', 'status']],
+            ['validate-widget-spec', 'read', new \WPMCP\Tools\WidgetBuilder\Validate_Widget_Spec(), 'Statically validate a custom-widget spec (title, controls, template) without storing it. Read-only', ['spec' => $spec_schema], ['spec']],
+            ['list-control-types', 'read', new \WPMCP\Tools\WidgetBuilder\List_Control_Types(), 'List the control types a custom-widget spec may use and the Elementor control each maps to. Read-only', [], []],
+        ];
+
+        foreach ($tools as [$name, $op, $handler, $desc, $props, $required]) {
+            $schema = [ 'type' => 'object', 'properties' => $props ];
+            if ([] !== $required) {
+                $schema['required'] = $required;
+            }
+            $registrar->register(new Ability(
+                'wpmcp/' . $name,
+                'pro',
+                $desc,
+                $schema,
+                [$handler, 'handle'],
+                'manage_options',
+                'elementor',
+                $op
+            ));
+        }
     }
 
     /**
