@@ -284,6 +284,10 @@ final class Plugin
             // and register active specs as Elementor widgets at runtime (no eval).
             add_action('init', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type']);
             add_action('elementor/widgets/register', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Registry', 'register']);
+            // Data-driven custom Gutenberg block builder: register the wpmcp_block
+            // CPT and register active specs as real blocks via register_block_type.
+            add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type'], 5);
+            add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Registry', 'register'], 20);
             add_action('admin_menu', [$this, 'register_admin_menu']);
             add_action('wp_ajax_wpmcp_restore', [new Restore_Controller(), 'handle']);
             // The WP-Cron executor for trigger-backup's scheduled events: runs
@@ -1767,6 +1771,45 @@ final class Plugin
         $this->register_dispatch_abilities($registrar);
         $this->register_integration_abilities($registrar);
         $this->register_widget_builder_abilities($registrar);
+        $this->register_block_builder_abilities($registrar);
+    }
+
+    /**
+     * The data-driven custom Gutenberg block builder (EMCP parity, no eval):
+     * store/validate/list block specs that a register_block_type render_callback
+     * renders at runtime. All PRO, manage_options, domain 'blocks'.
+     */
+    private function register_block_builder_abilities(Registrar $registrar): void
+    {
+        $spec_schema = [ 'type' => 'object' ];
+
+        $tools = [
+            ['create-custom-block', 'create', new \WPMCP\Tools\BlockBuilder\Create_Custom_Block(), 'Create a custom Gutenberg block from a data spec (title, attributes, template with {{name}} placeholders). Validated, stored as a wpmcp_block post, and registered via register_block_type at runtime with a render_callback that interprets the template (no code generation, no eval). Remove with delete-custom-block', ['spec' => $spec_schema], ['spec']],
+            ['update-custom-block', 'update', new \WPMCP\Tools\BlockBuilder\Update_Custom_Block(), 'Replace a custom block\'s spec by id (re-validated before it is stored)', ['block_id' => ['type' => 'integer'], 'spec' => $spec_schema], ['block_id', 'spec']],
+            ['get-custom-block', 'read', new \WPMCP\Tools\BlockBuilder\Get_Custom_Block(), 'Read one custom block\'s stored spec by id. Read-only', ['block_id' => ['type' => 'integer']], ['block_id']],
+            ['list-custom-blocks', 'read', new \WPMCP\Tools\BlockBuilder\List_Custom_Blocks(), 'List the custom blocks on this site (id, name, title, active/inactive). Read-only', [], []],
+            ['delete-custom-block', 'delete', new \WPMCP\Tools\BlockBuilder\Delete_Custom_Block(), 'Delete a custom block by moving it to the trash (reversible via restore-post)', ['block_id' => ['type' => 'integer']], ['block_id']],
+            ['set-block-status', 'update', new \WPMCP\Tools\BlockBuilder\Set_Block_Status(), 'Enable (publish) or disable (draft) a custom block by id', ['block_id' => ['type' => 'integer'], 'status' => ['type' => 'string']], ['block_id', 'status']],
+            ['validate-block-spec', 'read', new \WPMCP\Tools\BlockBuilder\Validate_Block_Spec(), 'Statically validate a custom-block spec (title, attributes, template) without storing it. Read-only', ['spec' => $spec_schema], ['spec']],
+            ['list-block-control-types', 'read', new \WPMCP\Tools\BlockBuilder\List_Block_Control_Types(), 'List the attribute types a custom-block spec may use and the block.json type each maps to. Read-only', [], []],
+        ];
+
+        foreach ($tools as [$name, $op, $handler, $desc, $props, $required]) {
+            $schema = [ 'type' => 'object', 'properties' => $props ];
+            if ([] !== $required) {
+                $schema['required'] = $required;
+            }
+            $registrar->register(new Ability(
+                'wpmcp/' . $name,
+                'pro',
+                $desc,
+                $schema,
+                [$handler, 'handle'],
+                'manage_options',
+                'blocks',
+                $op
+            ));
+        }
     }
 
     /**
