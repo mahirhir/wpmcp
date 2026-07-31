@@ -1772,6 +1772,40 @@ final class Plugin
         $this->register_integration_abilities($registrar);
         $this->register_widget_builder_abilities($registrar);
         $this->register_block_builder_abilities($registrar);
+        $this->register_cloud_abilities($registrar);
+    }
+
+    /**
+     * WP MCP Cloud sync (MVP): connect a site to the cloud and push/pull its
+     * builder assets (custom widget + block specs) over a versioned,
+     * backend-agnostic REST contract. All PRO, manage_options, domain 'cloud'.
+     */
+    private function register_cloud_abilities(Registrar $registrar): void
+    {
+        $tools = [
+            ['cloud-connect', 'update', new \WPMCP\Tools\Cloud\Cloud_Connect(), 'Connect this site to WP MCP Cloud: store the cloud url + api key and verify them by fetching the account. Returns the account on success', ['url' => ['type' => 'string'], 'key' => ['type' => 'string']], ['url', 'key']],
+            ['cloud-status', 'read', new \WPMCP\Tools\Cloud\Cloud_Status(), 'Report whether this site is connected to WP MCP Cloud, and where. Read-only', [], []],
+            ['cloud-list-assets', 'read', new \WPMCP\Tools\Cloud\Cloud_List_Assets(), 'List the assets (widget/block specs) in this site\'s WP MCP Cloud account. Read-only', [], []],
+            ['cloud-push-assets', 'update', new \WPMCP\Tools\Cloud\Cloud_Push_Assets(), 'Push this site\'s custom widget and block specs up to WP MCP Cloud (backup + reuse across sites). Optionally filter by type (widget|block)', ['types' => ['type' => 'array']], []],
+            ['cloud-pull-assets', 'create', new \WPMCP\Tools\Cloud\Cloud_Pull_Assets(), 'Pull the builder assets from this site\'s WP MCP Cloud account and recreate them locally as custom widget/block specs (each validated before it is stored)', [], []],
+        ];
+
+        foreach ($tools as [$name, $op, $handler, $desc, $props, $required]) {
+            $schema = [ 'type' => 'object', 'properties' => $props ];
+            if ([] !== $required) {
+                $schema['required'] = $required;
+            }
+            $registrar->register(new Ability(
+                'wpmcp/' . $name,
+                'pro',
+                $desc,
+                $schema,
+                [$handler, 'handle'],
+                'manage_options',
+                'cloud',
+                $op
+            ));
+        }
     }
 
     /**
