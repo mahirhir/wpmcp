@@ -313,6 +313,29 @@ final class Plugin
         $allowed = self::FLAVOR_GROUPS[ self::flavor() ] ?? null;
         return null === $allowed || in_array($group, $allowed, true);
     }
+
+    /**
+     * Boot-time hook wiring for the data-driven widget/block builders.
+     * Flavor-gated with the matching ability groups: vertical builds prune
+     * these classes' files from the zip, so the hooks must not reference
+     * them there. Public so tests can exercise the gating directly (boot()
+     * itself runs during the suite bootstrap, outside coverage collection).
+     */
+    public function register_builder_runtime_hooks(): void
+    {
+        // Data-driven custom widget builder: register the wpmcp_widget CPT
+        // and register active specs as Elementor widgets at runtime (no eval).
+        if ($this->group_enabled('widget_builder')) {
+            add_action('init', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type']);
+            add_action('elementor/widgets/register', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Registry', 'register']);
+        }
+        // Data-driven custom Gutenberg block builder: register the wpmcp_block
+        // CPT and register active specs as real blocks via register_block_type.
+        if ($this->group_enabled('block_builder')) {
+            add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type'], 5);
+            add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Registry', 'register'], 20);
+        }
+    }
     public function boot(): void
     {
         if (function_exists('register_activation_hook') && defined('WPMCP_FILE')) {
@@ -329,21 +352,7 @@ final class Plugin
             if (function_exists('wp_register_ability_category')) {
                 add_action('wp_abilities_api_categories_init', [$this, 'register_ability_category']);
             }
-            // Data-driven custom widget builder: register the wpmcp_widget CPT
-            // and register active specs as Elementor widgets at runtime (no eval).
-            // Flavor-gated with the matching ability groups: vertical builds
-            // prune these classes' files from the zip, so the hooks must not
-            // reference them there.
-            if ($this->group_enabled('widget_builder')) {
-                add_action('init', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type']);
-                add_action('elementor/widgets/register', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Registry', 'register']);
-            }
-            // Data-driven custom Gutenberg block builder: register the wpmcp_block
-            // CPT and register active specs as real blocks via register_block_type.
-            if ($this->group_enabled('block_builder')) {
-                add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type'], 5);
-                add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Registry', 'register'], 20);
-            }
+            $this->register_builder_runtime_hooks();
             add_action('admin_menu', [$this, 'register_admin_menu']);
             add_action('wp_ajax_wpmcp_restore', [new Restore_Controller(), 'handle']);
             // The WP-Cron executor for trigger-backup's scheduled events: runs

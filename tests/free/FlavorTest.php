@@ -76,6 +76,65 @@ class FlavorTest extends \WP_UnitTestCase
         $this->assertSame([], array_diff($woo, $full));
     }
 
+    public function test_boot_wires_registration_and_respects_the_flavor(): void
+    {
+        global $wp_filter;
+        $backup = array_map(fn ($hook) => clone $hook, $wp_filter);
+
+        try {
+            // Full flavor: boot() wires ability registration and the
+            // builder runtime hooks (re-adding over the bootstrap's
+            // identical registrations; state is restored below).
+            Plugin::instance()->boot();
+            $this->assertNotFalse(has_action('wp_abilities_api_init', [Plugin::instance(), 'register_abilities']));
+            $this->assertNotFalse(has_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type']));
+
+            // WooCommerce flavor: boot() must not reference the builder
+            // classes (their files are pruned from that build's zip).
+            $wp_filter = array_map(fn ($hook) => clone $hook, $backup);
+            remove_action('init', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type']);
+            remove_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type'], 5);
+            Plugin::set_flavor_for_tests('woocommerce');
+            Plugin::instance()->boot();
+            $this->assertNotFalse(has_action('wp_abilities_api_init', [Plugin::instance(), 'register_abilities']));
+            $this->assertFalse(has_action('init', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type']));
+            $this->assertFalse(has_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type']));
+        } finally {
+            $wp_filter = $backup;
+        }
+    }
+
+    public function test_builder_runtime_hooks_follow_the_flavor(): void
+    {
+        $widget_cpt  = ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type'];
+        $widget_reg  = ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Registry', 'register'];
+        $block_cpt   = ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type'];
+        $block_reg   = ['\\WPMCP\\Tools\\BlockBuilder\\Block_Registry', 'register'];
+
+        // Clear what the suite bootstrap's boot() already wired so absence
+        // is observable.
+        remove_action('init', $widget_cpt);
+        remove_action('elementor/widgets/register', $widget_reg);
+        remove_action('init', $block_cpt, 5);
+        remove_action('init', $block_reg, 20);
+
+        Plugin::set_flavor_for_tests('woocommerce');
+        Plugin::instance()->register_builder_runtime_hooks();
+        $this->assertFalse(has_action('init', $widget_cpt));
+        $this->assertFalse(has_action('elementor/widgets/register', $widget_reg));
+        $this->assertFalse(has_action('init', $block_cpt));
+        $this->assertFalse(has_action('init', $block_reg));
+
+        // Default flavor restores the hooks, which also leaves global state
+        // exactly as the bootstrap set it up.
+        Plugin::set_flavor_for_tests(null);
+        Plugin::instance()->register_builder_runtime_hooks();
+        $this->assertSame(10, has_action('init', $widget_cpt));
+        $this->assertSame(10, has_action('elementor/widgets/register', $widget_reg));
+        $this->assertSame(5, has_action('init', $block_cpt));
+        $this->assertSame(20, has_action('init', $block_reg));
+    }
+
     /** @return string[] declared ability names under the given flavor. */
     private function registered_names(?string $flavor): array
     {
