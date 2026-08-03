@@ -264,6 +264,55 @@ final class Plugin
     {
         return $this->registrar ??= new Registrar();
     }
+
+    /**
+     * Test seam: forced build flavor. Guarded by WPMCP_TESTING.
+     */
+    private static ?string $flavor_override = null;
+
+    /**
+     * Ability groups per vertical build flavor. A flavor listed here
+     * registers ONLY these groups (the inline core content/safety abilities
+     * in register_abilities() are common to every flavor); any other flavor
+     * value, including the default 'full', registers everything. The
+     * corresponding build script (scripts/build-woo-release.sh) prunes the
+     * excluded domains' files from that flavor's zip, so the gate and the
+     * artifact must stay in sync.
+     */
+    private const FLAVOR_GROUPS = [
+        'woocommerce' => [
+            'compose', 'woocommerce', 'menu', 'seo', 'linking', 'meta',
+            'diagnostics', 'cron', 'maintenance', 'context', 'block',
+            'structure', 'export', 'backup', 'analysis', 'connect',
+            'governance',
+        ],
+    ];
+
+    public static function set_flavor_for_tests(?string $flavor): void
+    {
+        if (! defined('WPMCP_TESTING') || ! WPMCP_TESTING) {
+            return;
+        }
+        self::$flavor_override = $flavor;
+    }
+
+    /**
+     * The build flavor: 'full' unless the main plugin file of a vertical
+     * build (e.g. wpmcp-for-woocommerce.php) defines WPMCP_FLAVOR.
+     */
+    public static function flavor(): string
+    {
+        if (null !== self::$flavor_override) {
+            return self::$flavor_override;
+        }
+        return defined('WPMCP_FLAVOR') ? WPMCP_FLAVOR : 'full';
+    }
+
+    private function group_enabled(string $group): bool
+    {
+        $allowed = self::FLAVOR_GROUPS[ self::flavor() ] ?? null;
+        return null === $allowed || in_array($group, $allowed, true);
+    }
     public function boot(): void
     {
         if (function_exists('register_activation_hook') && defined('WPMCP_FILE')) {
@@ -282,12 +331,19 @@ final class Plugin
             }
             // Data-driven custom widget builder: register the wpmcp_widget CPT
             // and register active specs as Elementor widgets at runtime (no eval).
-            add_action('init', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type']);
-            add_action('elementor/widgets/register', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Registry', 'register']);
+            // Flavor-gated with the matching ability groups: vertical builds
+            // prune these classes' files from the zip, so the hooks must not
+            // reference them there.
+            if ($this->group_enabled('widget_builder')) {
+                add_action('init', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Spec_Store', 'ensure_post_type']);
+                add_action('elementor/widgets/register', ['\\WPMCP\\Tools\\WidgetBuilder\\Widget_Registry', 'register']);
+            }
             // Data-driven custom Gutenberg block builder: register the wpmcp_block
             // CPT and register active specs as real blocks via register_block_type.
-            add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type'], 5);
-            add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Registry', 'register'], 20);
+            if ($this->group_enabled('block_builder')) {
+                add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type'], 5);
+                add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Registry', 'register'], 20);
+            }
             add_action('admin_menu', [$this, 'register_admin_menu']);
             add_action('wp_ajax_wpmcp_restore', [new Restore_Controller(), 'handle']);
             // The WP-Cron executor for trigger-backup's scheduled events: runs
@@ -433,9 +489,20 @@ final class Plugin
         return $this->registrar()->declared();
     }
 
+    /**
+     * Hook callback (wp_abilities_api_init / init). Takes no parameters on
+     * purpose: WordPress forwards hook arguments to callbacks, so an
+     * optional Registrar parameter here would receive whatever the action
+     * passes. Tests use register_abilities_into() with a throwaway
+     * Registrar instead.
+     */
     public function register_abilities(): void
     {
-        $registrar          = $this->registrar();
+        $this->register_abilities_into($this->registrar());
+    }
+
+    public function register_abilities_into(Registrar $registrar): void
+    {
         $get_page           = new Get_Page();
         $update_blocks      = new Update_Blocks();
         $list_operations    = new List_Operations();
@@ -1741,38 +1808,45 @@ final class Plugin
             'update'
         ));
 
-        $this->register_compose_abilities($registrar);
-        $this->register_woocommerce_abilities($registrar);
-        $this->register_menu_abilities($registrar);
-        $this->register_elementor_abilities($registrar);
-        $this->register_builder_abilities($registrar);
-        $this->register_acf_abilities($registrar);
-        $this->register_seo_abilities($registrar);
-        $this->register_i18n_abilities($registrar);
-        $this->register_linking_abilities($registrar);
-        $this->register_meta_abilities($registrar);
-        $this->register_diagnostics_abilities($registrar);
-        $this->register_cron_abilities($registrar);
-        $this->register_maintenance_abilities($registrar);
-        $this->register_context_abilities($registrar);
-        $this->register_rest_abilities($registrar);
-        $this->register_block_abilities($registrar);
-        $this->register_structure_abilities($registrar);
-        $this->register_export_abilities($registrar);
-        $this->register_backup_abilities($registrar);
-        $this->register_analysis_abilities($registrar);
-        $this->register_code_abilities($registrar);
-        $this->register_cli_abilities($registrar);
-        $this->register_php_exec_abilities($registrar);
-        $this->register_connect_abilities($registrar);
-        $this->register_governance_abilities($registrar);
-        $this->register_multisite_abilities($registrar);
-        $this->register_analytics_abilities($registrar);
-        $this->register_dispatch_abilities($registrar);
-        $this->register_integration_abilities($registrar);
-        $this->register_widget_builder_abilities($registrar);
-        $this->register_block_builder_abilities($registrar);
-        $this->register_cloud_abilities($registrar);
+        $groups = [
+            'compose'        => fn () => $this->register_compose_abilities($registrar),
+            'woocommerce'    => fn () => $this->register_woocommerce_abilities($registrar),
+            'menu'           => fn () => $this->register_menu_abilities($registrar),
+            'elementor'      => fn () => $this->register_elementor_abilities($registrar),
+            'builder'        => fn () => $this->register_builder_abilities($registrar),
+            'acf'            => fn () => $this->register_acf_abilities($registrar),
+            'seo'            => fn () => $this->register_seo_abilities($registrar),
+            'i18n'           => fn () => $this->register_i18n_abilities($registrar),
+            'linking'        => fn () => $this->register_linking_abilities($registrar),
+            'meta'           => fn () => $this->register_meta_abilities($registrar),
+            'diagnostics'    => fn () => $this->register_diagnostics_abilities($registrar),
+            'cron'           => fn () => $this->register_cron_abilities($registrar),
+            'maintenance'    => fn () => $this->register_maintenance_abilities($registrar),
+            'context'        => fn () => $this->register_context_abilities($registrar),
+            'rest'           => fn () => $this->register_rest_abilities($registrar),
+            'block'          => fn () => $this->register_block_abilities($registrar),
+            'structure'      => fn () => $this->register_structure_abilities($registrar),
+            'export'         => fn () => $this->register_export_abilities($registrar),
+            'backup'         => fn () => $this->register_backup_abilities($registrar),
+            'analysis'       => fn () => $this->register_analysis_abilities($registrar),
+            'code'           => fn () => $this->register_code_abilities($registrar),
+            'cli'            => fn () => $this->register_cli_abilities($registrar),
+            'php_exec'       => fn () => $this->register_php_exec_abilities($registrar),
+            'connect'        => fn () => $this->register_connect_abilities($registrar),
+            'governance'     => fn () => $this->register_governance_abilities($registrar),
+            'multisite'      => fn () => $this->register_multisite_abilities($registrar),
+            'analytics'      => fn () => $this->register_analytics_abilities($registrar),
+            'dispatch'       => fn () => $this->register_dispatch_abilities($registrar),
+            'integration'    => fn () => $this->register_integration_abilities($registrar),
+            'widget_builder' => fn () => $this->register_widget_builder_abilities($registrar),
+            'block_builder'  => fn () => $this->register_block_builder_abilities($registrar),
+            'cloud'          => fn () => $this->register_cloud_abilities($registrar),
+        ];
+        foreach ($groups as $group => $register) {
+            if ($this->group_enabled($group)) {
+                $register();
+            }
+        }
     }
 
     /**
