@@ -1993,6 +1993,9 @@ final class Plugin
             new \WPMCP\Integrations\Meta_Box_Integration(),
             new \WPMCP\Integrations\Ninja_Forms_Integration(),
             new \WPMCP\Integrations\Fluent_Forms_Integration(),
+            new \WPMCP\Integrations\Forminator_Integration(),
+            new \WPMCP\Integrations\SureForms_Integration(),
+            new \WPMCP\Integrations\MetForm_Integration(),
         ];
 
         foreach ($integrations as $integration) {

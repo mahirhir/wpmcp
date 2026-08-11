@@ -34,7 +34,7 @@ The difference: **every mutating operation takes a snapshot first.** If the agen
 * Elementor: widgets, templates, theme builder, popups, global styles, custom widget building
 * Bricks and Divi structural editing
 * WooCommerce, ACF, Meta Box, Yoast, Rank Math, SEOPress, The SEO Framework, SureRank
-* Forms (Gravity Forms, WPForms, Contact Form 7, Formidable, Ninja Forms, Fluent Forms), events, donations, memberships (read)
+* Forms (Gravity Forms, WPForms, Contact Form 7, Formidable, Ninja Forms, Fluent Forms, Forminator, SureForms, MetForm), events, donations, memberships (read)
 * Media library plus stock image imports
 * REST passthrough for anything else, still snapshotted
 
