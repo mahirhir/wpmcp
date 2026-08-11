@@ -42,6 +42,7 @@ use WPMCP\Tools\Analysis\Analyze_Seo;
 use WPMCP\Tools\Analysis\Analyze_Accessibility;
 use WPMCP\Admin\Handshake_Settings_Page;
 use WPMCP\Admin\Connection_Page;
+use WPMCP\Admin\Announcements;
 use WPMCP\Admin\Ability_Grid_Page;
 use WPMCP\Governance\Default_Seeder;
 use WPMCP\Connect\Exposure;
@@ -394,6 +395,10 @@ final class Plugin
             // Secret-free Claude Desktop bundle download from the Connection
             // screen (nonce + manage_options enforced inside the handler).
             add_action('admin_post_wpmcp_download_bundle', [new Connection_Page(), 'download_bundle']);
+            // Cloud announcements feed (issue #138): dismissible dated
+            // notices on wpmcp screens only, never site-wide. 24h transient
+            // cache, per-user dismissal, silent on any cloud failure.
+            Announcements::register();
             // Compact tool-surface mode (issue #79): in compact mode the
             // adapter's advertised tools/list collapses to the meta-tools
             // plus connection basics. Exposure-only — registration and
