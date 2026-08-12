@@ -15,13 +15,14 @@
  */
 
 return [
-    'total'     => 270,
+    'total'     => 273,
     'free'      => 193,
-    'pro'       => 77,
+    'pro'       => 80,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
         'wpmcp/acf-write' => 'free',
         'wpmcp/activate-plugin' => 'free',
+        'wpmcp/add-alt-text-from-context' => 'pro',
         'wpmcp/add-atomic-widget' => 'pro',
         'wpmcp/add-block' => 'free',
         'wpmcp/add-container' => 'pro',
@@ -93,6 +94,8 @@ return [
         'wpmcp/extract-content' => 'pro',
         'wpmcp/find-element' => 'pro',
         'wpmcp/find-orphan-posts' => 'free',
+        'wpmcp/fix-color-contrast' => 'pro',
+        'wpmcp/fix-link-text' => 'pro',
         'wpmcp/fluentforms-read' => 'free',
         'wpmcp/fluentforms-write' => 'free',
         'wpmcp/formidable-read' => 'free',

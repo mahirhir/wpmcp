@@ -45,6 +45,9 @@ use WPMCP\Tools\Cli\Run_Cli_Job;
 use WPMCP\Tools\Analysis\Extract_Content;
 use WPMCP\Tools\Analysis\Analyze_Seo;
 use WPMCP\Tools\Analysis\Analyze_Accessibility;
+use WPMCP\Tools\Analysis\Fix_Color_Contrast;
+use WPMCP\Tools\Analysis\Add_Alt_Text_From_Context;
+use WPMCP\Tools\Analysis\Fix_Link_Text;
 use WPMCP\Admin\Handshake_Settings_Page;
 use WPMCP\Admin\Connection_Page;
 use WPMCP\Admin\Announcements;
@@ -5321,14 +5324,27 @@ final class Plugin
     }
 
     /**
-     * Register the SEO + accessibility analysis tools as pro-tier abilities.
+     * Register the SEO + accessibility analysis and auto-fixer tools as
+     * pro-tier abilities.
      *
-     * All four are read-only: they extract and score a post's stored content
-     * and never write anything, so none touch the safety core. Because
-     * Registrar skips 'pro' tier abilities unless Gate::is_pro() is true, these
-     * only register on Pro-tier sites, matching the Elementor deep-editing
-     * pro group. They share domain 'analysis' and operation 'read', so their
-     * read_only_hint annotation derives to true automatically.
+     * The four AUDIT tools (extract-content, analyze-seo,
+     * analyze-accessibility, check-contrast) are read-only: they extract and
+     * score a post's stored content and never write anything, so none touch
+     * the safety core. They share domain 'analysis' and operation 'read', so
+     * their read_only_hint annotation derives to true automatically.
+     *
+     * The three AUTO-FIXERS (fix-color-contrast, add-alt-text-from-context,
+     * fix-link-text, issue #71) close the loop on those audits. They are
+     * registered with operation 'update' even though their DEFAULT behavior is
+     * a dry run that writes nothing: an annotation has to describe what the
+     * tool can do at its most permissive, not its safest mode, so a client
+     * that refuses non-read-only tools must refuse these. Each fixer writes
+     * its entire pass through one Safe_Mutation snapshot, so the returned
+     * operation_id rolls back the whole pass (see Tools\Analysis\Fix_Pass).
+     *
+     * Because Registrar skips 'pro' tier abilities unless Gate::is_pro() is
+     * true, all seven only register on Pro-tier sites, matching the Elementor
+     * deep-editing pro group.
      */
     private function register_analysis_abilities(Registrar $registrar): void
     {
@@ -5408,6 +5424,72 @@ final class Plugin
             'edit_posts',
             'analysis',
             'read'
+        ));
+
+        $fix_color_contrast = new Fix_Color_Contrast();
+
+        $registrar->register(new Ability(
+            'wpmcp/fix-color-contrast',
+            'pro',
+            'Raise failing inline text/background color pairs in a post to a target WCAG ratio, moving lightness only so the hue survives. Reports before/after color, ratio and achieved level per pair. Dry run unless apply=true; applying writes the pass under one snapshot that one rollback reverts',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'            => [ 'type' => 'integer' ],
+                    'target_ratio'       => [ 'type' => 'number' ],
+                    'default_background' => [ 'type' => 'string' ],
+                    'apply'              => [ 'type' => 'boolean' ],
+                    'session_id'         => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$fix_color_contrast, 'handle'],
+            'edit_posts',
+            'analysis',
+            'update'
+        ));
+
+        $add_alt_text = new Add_Alt_Text_From_Context();
+
+        $registrar->register(new Ability(
+            'wpmcp/add-alt-text-from-context',
+            'pro',
+            'Write alt text for a post\'s images that have none, from the filename, nearest heading, or post title. Never overwrites existing alt text unless overwrite_existing=true, and never touches images marked decorative. Dry run unless apply=true; applying writes the pass under one snapshot that one rollback reverts',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'            => [ 'type' => 'integer' ],
+                    'overwrite_existing' => [ 'type' => 'boolean' ],
+                    'apply'              => [ 'type' => 'boolean' ],
+                    'session_id'         => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$add_alt_text, 'handle'],
+            'edit_posts',
+            'analysis',
+            'update'
+        ));
+
+        $fix_link_text = new Fix_Link_Text();
+
+        $registrar->register(new Ability(
+            'wpmcp/fix-link-text',
+            'pro',
+            'Replace empty or generic anchor text ("click here", "read more") on internal links with the destination post\'s title, fixing WCAG 2.4.4 and weak SEO anchors at once. External links and anchors containing markup are skipped. Dry run unless apply=true; applying writes the pass under one snapshot that one rollback reverts',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'    => [ 'type' => 'integer' ],
+                    'apply'      => [ 'type' => 'boolean' ],
+                    'session_id' => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$fix_link_text, 'handle'],
+            'edit_posts',
+            'analysis',
+            'update'
         ));
     }
 
