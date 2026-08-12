@@ -221,6 +221,72 @@ $edits['src/Admin/Ability_Grid_Page.php'] = [
     ],
 ];
 
+// ----------------------------------------------------------------- skills
+// The skill tools and the whole bundled playbook library are free already.
+// What leaves is the per-document tier: a premium library ships with the
+// off-directory add-on, so in this build nothing is ever withheld and the
+// lock branch, its error copy and the docs describing it all go.
+$edits['src/Skills/Skill_Library.php'] = [
+    ["use WPMCP\\Pro\\Gate;\n", '', 1],
+    [
+        " *  - TIERING IS PER SKILL, NOT PER SURFACE. The tools and the starter\n"
+            . " *    library are free. A skill declaring `tier: pro` is still listed (an\n"
+            . " *    agent can see it exists) but its body is withheld through Pro\\Gate\n"
+            . " *    until the site is licensed, which is what lets a premium skill library\n"
+            . " *    ship into the same directory structure later.\n",
+        " *  - EVERY SKILL IN THIS BUILD IS FREE. The tools and every document\n"
+            . " *    they serve are available to every install: no tier, no lock and\n"
+            . " *    no body withheld from anyone.\n",
+        1,
+    ],
+    [
+        "    /** Whether a record's body is withheld pending a pro license. */\n"
+            . "    public static function is_locked(array \$record): bool\n"
+            . "    {\n"
+            . "        return 'pro' === (\$record['tier'] ?? 'free') && ! Gate::is_pro();\n"
+            . "    }\n",
+        "    /**\n"
+            . "     * Whether a record's body is withheld. Nothing in this build ever is,\n"
+            . "     * so this can only answer no. Kept as a method because the listing\n"
+            . "     * projection and get-skill both ask.\n"
+            . "     *\n"
+            . "     * @param array<string, mixed> \$record Unused: no record is withheld here.\n"
+            . "     */\n"
+            . "    public static function is_locked(array \$record): bool\n"
+            . "    {\n"
+            . "        return false;\n"
+            . "    }\n",
+        1,
+    ],
+];
+
+$edits['src/Tools/Skills/Get_Skill.php'] = [
+    [
+        " *  - wpmcp_skill_locked: the skill declares `tier: pro` and this site is not\n"
+            . " *    licensed. The catalog entry stays visible, only the body is withheld.\n",
+        '',
+        1,
+    ],
+    [
+        "        if (true === (\$skill['locked'] ?? false)) {\n"
+            . "            return new \\WP_Error(\n"
+            . "                'wpmcp_skill_locked',\n"
+            . "                sprintf(\n"
+            . "                    'The skill \"%s\" is part of the premium skill library and needs an active WP MCP Pro license on this site.',\n"
+            . "                    \$slug\n"
+            . "                ),\n"
+            . "                [\n"
+            . "                    'slug' => \$slug,\n"
+            . "                    'tier' => 'pro',\n"
+            . "                ]\n"
+            . "            );\n"
+            . "        }\n\n"
+            . "        unset(\$skill['locked']);\n",
+        "        unset(\$skill['locked']);\n",
+        1,
+    ],
+];
+
 // ------------------------------------------------------------- Plugin.php
 $plugin_edits = [
     // Ability-group wiring for the groups that are not in this build.
@@ -271,6 +337,15 @@ $plugin_edits[] = [
     "     * One-call declarative page composition (issue #57). Both dialects,\n"
         . "     * the block editor and the Elementor builder, are available to every\n"
         . "     * install of this plugin.\n",
+    1,
+];
+$plugin_edits[] = [
+    "     * Both tools are FREE and read-only. Tiering happens per skill document\n"
+        . "     * (`tier: pro` in its frontmatter, enforced in Get_Skill through\n"
+        . "     * Pro\\Gate), not at the surface, so a premium skill library can drop into\n"
+        . "     * the same directory layout without changing this registration.\n",
+    "     * Both tools are FREE and read-only, and so is every skill document\n"
+        . "     * they serve: this build has no premium skill library to withhold.\n",
     1,
 ];
 $edits['src/Plugin.php'] = $plugin_edits;
