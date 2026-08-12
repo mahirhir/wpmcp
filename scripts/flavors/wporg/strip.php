@@ -63,6 +63,11 @@ const REMOVED_PATHS = [
     'src/Tools/Performance/Curl_Dns_Pin.php',
     // Paid ability whose handler lives inside an otherwise free directory.
     'src/Tools/Media/Stock/Insert_Stock_Image.php',
+    // Brand kits (issue #75). Every class under here is reachable only from
+    // register_brand_kit_abilities, which this build deletes, and the kit
+    // library itself is data rather than a free feature, so the directory
+    // goes whole rather than being swept.
+    'src/Tools/Brand',
 ];
 
 /** Whole method declarations deleted from Plugin.php: every one is pro-only. */
@@ -76,6 +81,7 @@ const REMOVED_METHODS = [
     'register_cloud_abilities',
     'register_elementor_pro_abilities',
     'register_elementor_structural_abilities',
+    'register_brand_kit_abilities',
 ];
 
 /**
