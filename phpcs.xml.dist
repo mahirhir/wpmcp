@@ -3,6 +3,8 @@
     <description>PSR-12, adapted for WordPress-idiomatic code: snake_case class/method names and intentional plugin-bootstrap side effects (ABSPATH guards) are allowed.</description>
 
     <file>src</file>
+    <!-- Dev-only tooling, linted to the same standard as the plugin. -->
+    <file>tools/compliance</file>
     <arg name="extensions" value="php"/>
     <arg value="np"/>
 

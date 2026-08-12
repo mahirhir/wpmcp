@@ -177,6 +177,40 @@ class Code_Store
         return false;
     }
 
+    /**
+     * Sweep expired authorization codes (issue #133). Eviction used to be
+     * lazy and on-touch: a code that was issued and then abandoned (the
+     * user closed the consent tab) was never redeemed, so nothing ever
+     * looked at it and it stayed in the option forever. Codes live 60
+     * seconds, so under a browser-abandoned authorize flow this is the
+     * fastest-growing of the three OAuth stores.
+     *
+     * Uses a plain update_option rather than consume()'s compare-and-swap:
+     * this only ever removes records that are already unredeemable, so a
+     * lost race costs nothing but a deferred sweep.
+     *
+     * @return int Number of codes removed.
+     */
+    public static function gc(): int
+    {
+        $stored  = self::load();
+        $now     = self::now();
+        $removed = 0;
+
+        foreach ($stored as $key => $record) {
+            if ($now > (int) ($record['issued_at'] ?? 0) + self::TTL_SECONDS) {
+                unset($stored[ $key ]);
+                $removed++;
+            }
+        }
+
+        if ($removed > 0) {
+            self::save($stored);
+        }
+
+        return $removed;
+    }
+
     private static function hash(string $code): string
     {
         return hash('sha256', $code);

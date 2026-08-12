@@ -68,8 +68,15 @@ class Token_Store
         update_option(self::OPTION, $stored);
     }
 
-    /** @return string The plaintext bearer token, returned exactly once. */
-    public static function issue(string $client_id, int $user_id, string $scope): string
+    /**
+     * @param string $chain_id Optional refresh-grant chain this token was
+     *                          issued along (issue #133). Recording it is
+     *                          what lets Refresh_Token_Store's reuse
+     *                          detection revoke the access tokens a thief
+     *                          already minted, not just the refresh tokens.
+     * @return string The plaintext bearer token, returned exactly once.
+     */
+    public static function issue(string $client_id, int $user_id, string $scope, string $chain_id = ''): string
     {
         $token = 'at_' . bin2hex(random_bytes(32));
 
@@ -78,6 +85,7 @@ class Token_Store
             'client_id'        => $client_id,
             'user_id'          => $user_id,
             'scope'            => $scope,
+            'chain_id'         => $chain_id,
             'issued_at'        => self::now(),
             'pass_fingerprint' => self::pass_fingerprint($user_id),
         ];
@@ -123,6 +131,78 @@ class Token_Store
             'user_id'   => $record['user_id'],
             'scope'     => $record['scope'],
         ];
+    }
+
+    /**
+     * Revoke every access token issued along a refresh-grant chain
+     * (issue #133). Called by Refresh_Token_Store when it detects a
+     * rotated token being reused past its grace window: revoking only the
+     * refresh chain would leave the thief holding a working access token
+     * for up to TTL_SECONDS.
+     *
+     * @return int Number of tokens removed.
+     */
+    public static function revoke_chain(string $chain_id): int
+    {
+        if ('' === $chain_id) {
+            return 0;
+        }
+
+        $stored  = self::load();
+        $removed = 0;
+
+        foreach ($stored as $key => $record) {
+            if ((string) ($record['chain_id'] ?? '') === $chain_id) {
+                unset($stored[ $key ]);
+                $removed++;
+            }
+        }
+
+        if ($removed > 0) {
+            self::save($stored);
+        }
+
+        return $removed;
+    }
+
+    /** Whether any access token is currently bound to a client. */
+    public static function has_tokens_for_client(string $client_id): bool
+    {
+        foreach (self::load() as $record) {
+            if ((string) ($record['client_id'] ?? '') === $client_id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Sweep expired access tokens (issue #133). Until now eviction was
+     * lazy and on-touch only: an expired token was removed the next time
+     * someone happened to present it, so tokens from clients that simply
+     * went away accumulated in the option forever. Idempotent.
+     *
+     * @return int Number of tokens removed.
+     */
+    public static function gc(): int
+    {
+        $stored  = self::load();
+        $now     = self::now();
+        $removed = 0;
+
+        foreach ($stored as $key => $record) {
+            if ($now > (int) ($record['issued_at'] ?? 0) + self::TTL_SECONDS) {
+                unset($stored[ $key ]);
+                $removed++;
+            }
+        }
+
+        if ($removed > 0) {
+            self::save($stored);
+        }
+
+        return $removed;
     }
 
     /**

@@ -31,6 +31,12 @@ class IntegrationAbilitiesRegistrationTest extends \WP_UnitTestCase
         'wpmcp/give-write',
         'wpmcp/pmpro-read',
         'wpmcp/pmpro-write',
+        'wpmcp/forminator-read',
+        'wpmcp/forminator-write',
+        'wpmcp/sureforms-read',
+        'wpmcp/sureforms-write',
+        'wpmcp/metform-read',
+        'wpmcp/metform-write',
     ];
 
     public function test_dispatcher_pair_is_registered_as_free_abilities(): void
