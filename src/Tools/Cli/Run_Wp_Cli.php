@@ -2,27 +2,21 @@
 
 namespace WPMCP\Tools\Cli;
 
-use WPMCP\Governance\Governance_Audit_Log;
-use WPMCP\Identity\Identity_Context;
-
 if (! defined('ABSPATH')) {
     exit;
 }
 
 /**
  * The run-wp-cli tool handler (issue #44): runs a guarded, allowlisted wp-cli
- * subcommand and returns its stdout/stderr/exit code. This class composes
- * every Wp_Cli_Guard check, in order, and is the only place that decides
- * whether a command reaches the executor:
+ * subcommand and returns its stdout/stderr/exit code.
  *
- *  1. Wp_Cli_Guard::is_enabled()             - default OFF
- *  2. Wp_Cli_Guard::is_allowed_on_environment() - refuses production
- *  3. Wp_Cli_Guard::is_allowed_subcommand()  - allowlist, deny by default
- *  4. Wp_Cli_Guard::validate_args()          - shell metacharacter/NUL check
- *  5. Wp_Cli_Guard::validate_flags()         - safe-flag allowlist, deny by
- *                                              default on every "-"-prefixed
- *                                              token anywhere in the argv
- *  6. Wp_Cli_Guard::resolve_binary()         - locates the wp binary
+ * The guard chain itself lives in Wp_Cli_Guard_Chain::assert_allowed(), which
+ * composes every Wp_Cli_Guard check in order. It was extracted there when the
+ * background job dispatcher (issue #84) needed the identical chain: the two
+ * entry points share one implementation rather than two copies that could
+ * drift, and the shared-guard tests in
+ * tests/free/Cli/WpCliGuardChainSharedTest.php drive the same refusal matrix
+ * through both to prove it.
  *
  * Every attempt, allowed or denied, is recorded via Governance_Audit_Log,
  * same as the ordinary permission-check audit trail (Registrar::record_audit):
@@ -42,6 +36,8 @@ if (! defined('ABSPATH')) {
  */
 class Run_Wp_Cli
 {
+    public const ABILITY = 'wpmcp/run-wp-cli';
+
     /** @var callable */
     private $executor;
 
@@ -57,22 +53,18 @@ class Run_Wp_Cli
             throw new \InvalidArgumentException('A wp-cli command is required.');
         }
 
-        $subcommand_argv = self::split_command($command);
+        $subcommand_argv = Wp_Cli_Guard_Chain::split_command($command);
 
         try {
-            $this->guard($subcommand_argv);
+            Wp_Cli_Guard_Chain::assert_allowed($subcommand_argv);
+            // assert_allowed() above already confirmed resolve_binary()
+            // succeeds; a failure here would mean it changed between calls
+            // (e.g. a filter with side effects), so re-resolve defensively
+            // rather than assume the earlier answer still holds.
+            $binary = Wp_Cli_Guard_Chain::resolve_binary_or_throw();
         } catch (\RuntimeException $e) {
             $this->audit(false);
             throw $e;
-        }
-
-        $binary = Wp_Cli_Guard::resolve_binary();
-        // guard() above already confirmed resolve_binary() succeeds; a
-        // WP_Error here would mean it changed between calls (e.g. a filter
-        // with side effects), so re-check defensively rather than assume.
-        if (is_wp_error($binary)) {
-            $this->audit(false);
-            throw new \RuntimeException($binary->get_error_message());
         }
 
         $full_argv = array_merge([$binary], $subcommand_argv);
@@ -90,77 +82,12 @@ class Run_Wp_Cli
     }
 
     /**
-     * Run every guard in order, throwing a RuntimeException with the
-     * relevant message on the first one that fails. Never calls the
-     * executor.
-     *
-     * @param string[] $subcommand_argv
-     */
-    private function guard(array $subcommand_argv): void
-    {
-        if (! Wp_Cli_Guard::is_enabled()) {
-            throw new \RuntimeException(
-                'WP-CLI execution is disabled. Enable it with the WPMCP_ALLOW_WP_CLI constant or the wpmcp_allow_wp_cli filter.'
-            );
-        }
-
-        if (! Wp_Cli_Guard::is_allowed_on_environment()) {
-            throw new \RuntimeException(
-                'WP-CLI execution is refused on a production environment. Set WPMCP_ALLOW_WP_CLI_ON_PRODUCTION or the wpmcp_allow_wp_cli_on_production filter to override.'
-            );
-        }
-
-        if (! Wp_Cli_Guard::is_allowed_subcommand($subcommand_argv)) {
-            throw new \RuntimeException(
-                'This wp-cli subcommand is not on the allowlist. Extend it with the wpmcp_wp_cli_allowlist filter.'
-            );
-        }
-
-        $args_valid = Wp_Cli_Guard::validate_args($subcommand_argv);
-        if (is_wp_error($args_valid)) {
-            throw new \RuntimeException($args_valid->get_error_message());
-        }
-
-        $flags_valid = Wp_Cli_Guard::validate_flags($subcommand_argv);
-        if (is_wp_error($flags_valid)) {
-            throw new \RuntimeException($flags_valid->get_error_message());
-        }
-
-        $binary = Wp_Cli_Guard::resolve_binary();
-        if (is_wp_error($binary)) {
-            throw new \RuntimeException($binary->get_error_message());
-        }
-    }
-
-    /**
-     * Record this attempt to Governance_Audit_Log. Deliberately logs only
-     * the ability name, active identity, and allow/deny outcome, mirroring
-     * Registrar::record_audit(): never the command string or argv, so no
-     * wp-cli argument (which may contain a secret value) ever reaches the
-     * audit log.
+     * Record this attempt to Governance_Audit_Log via the shared helper:
+     * only the ability name, active identity, and allow/deny outcome, never
+     * the command string or argv.
      */
     private function audit(bool $allowed): void
     {
-        try {
-            $identity = Identity_Context::current() ?? 'none';
-            Governance_Audit_Log::record('wpmcp/run-wp-cli', $identity, $allowed);
-        } catch (\Throwable $e) {
-            // Auditing must never break (or block) the command outcome it observes.
-        }
-    }
-
-    /**
-     * Split a command string into argv words. A plain whitespace split is
-     * sufficient (and deliberately not a shell-style quote-aware parser):
-     * Wp_Cli_Guard::validate_args() rejects shell metacharacters outright,
-     * so there is no quoting syntax this tool needs to understand or
-     * support in the first place.
-     *
-     * @return string[]
-     */
-    private static function split_command(string $command): array
-    {
-        $parts = preg_split('/\s+/', trim($command));
-        return is_array($parts) ? $parts : [];
+        Wp_Cli_Guard_Chain::audit(self::ABILITY, $allowed);
     }
 }

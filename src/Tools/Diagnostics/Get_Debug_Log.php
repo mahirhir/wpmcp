@@ -72,16 +72,13 @@ class Get_Debug_Log
             return (string) file_get_contents($abs);
         }
 
-        $handle = fopen($abs, 'rb');
-        if (false === $handle) {
-            return '';
-        }
+        // file_get_contents() with an offset reads the tail without loading
+        // the whole file. It is one of the three names the Plugin Check
+        // review ruleset explicitly excludes from
+        // WordPress.WP.AlternativeFunctions, unlike fopen/fread/fclose.
+        $content = file_get_contents($abs, false, null, $size - $max_bytes, $max_bytes);
 
-        fseek($handle, -$max_bytes, SEEK_END);
-        $content = (string) fread($handle, $max_bytes);
-        fclose($handle);
-
-        return $content;
+        return false === $content ? '' : $content;
     }
 
     /**

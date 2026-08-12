@@ -37,6 +37,11 @@ use WPMCP\Tools\Analysis\Check_Contrast;
 use WPMCP\Tools\Code\Validate_Php_Snippet;
 use WPMCP\Tools\Code\Run_Php_Snippet;
 use WPMCP\Tools\Cli\Run_Wp_Cli;
+use WPMCP\Tools\Cli\Dispatch_Cli_Job;
+use WPMCP\Tools\Cli\Get_Cli_Job;
+use WPMCP\Tools\Cli\List_Cli_Jobs;
+use WPMCP\Tools\Cli\Cancel_Cli_Job;
+use WPMCP\Tools\Cli\Run_Cli_Job;
 use WPMCP\Tools\Analysis\Extract_Content;
 use WPMCP\Tools\Analysis\Analyze_Seo;
 use WPMCP\Tools\Analysis\Analyze_Accessibility;
@@ -45,6 +50,7 @@ use WPMCP\Tools\Analysis\Add_Alt_Text_From_Context;
 use WPMCP\Tools\Analysis\Fix_Link_Text;
 use WPMCP\Admin\Handshake_Settings_Page;
 use WPMCP\Admin\Connection_Page;
+use WPMCP\Admin\Announcements;
 use WPMCP\Admin\Ability_Grid_Page;
 use WPMCP\Governance\Default_Seeder;
 use WPMCP\Connect\Exposure;
@@ -241,7 +247,10 @@ use WPMCP\Tools\Menus\Delete_Menu;
 use WPMCP\Auth\Endpoints as OAuth_Endpoints;
 use WPMCP\Auth\Bearer_Auth;
 
-if (! defined('ABSPATH') && ! defined('WPMCP_TESTING')) {
+// Plugin Check's Direct_File_Access_Check only accepts the bare defined()
+// test; an extra conjunct makes it report the file as unprotected. The test
+// bootstrap defines ABSPATH itself, so the guard needs no test escape hatch.
+if (! defined('ABSPATH')) {
     exit;
 }
 
@@ -362,6 +371,13 @@ final class Plugin
             // the queued job (producing a backup artifact) and flips its
             // status to completed/failed. See Run_Backup_Job's docblock.
             add_action(Run_Backup_Job::HOOK, [new Run_Backup_Job(), 'handle']);
+            // The WP-Cron executor for dispatch-cli-job's scheduled events
+            // (issue #84). It re-runs the FULL wp-cli guard chain before
+            // executing anything, so hooking it here does not by itself let
+            // any queued command run: a job queued while the opt-in gate was
+            // open still fails closed once that gate is shut. See
+            // Run_Cli_Job's docblock.
+            add_action(Run_Cli_Job::HOOK, [new Run_Cli_Job(), 'handle']);
             // Front-end maintenance-mode enforcement. template_redirect runs after
             // WordPress has resolved the query but before a template is loaded, and
             // does not fire for wp-admin or REST requests, so authenticated capable
@@ -397,6 +413,10 @@ final class Plugin
             // Secret-free Claude Desktop bundle download from the Connection
             // screen (nonce + manage_options enforced inside the handler).
             add_action('admin_post_wpmcp_download_bundle', [new Connection_Page(), 'download_bundle']);
+            // Cloud announcements feed (issue #138): dismissible dated
+            // notices on wpmcp screens only, never site-wide. 24h transient
+            // cache, per-user dismissal, silent on any cloud failure.
+            Announcements::register();
             // Compact tool-surface mode (issue #79): in compact mode the
             // adapter's advertised tools/list collapses to the meta-tools
             // plus connection basics. Exposure-only — registration and
@@ -427,8 +447,8 @@ final class Plugin
         // users' site-wide agent mutations, so it is gated at manage_options,
         // matching Restore_Controller::handle()'s ajax capability check.
         add_menu_page(
-            'wpmcp',
-            'wpmcp',
+            __('wpmcp', 'wpmcp'),
+            __('wpmcp', 'wpmcp'),
             'manage_options',
             'wpmcp',
             [new History_Page(), 'render']
@@ -439,10 +459,10 @@ final class Plugin
         // site-wide agent mutations, so it needs the same trust level.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Audit Log',
-            'Audit Log',
+            __('wpmcp: Audit Log', 'wpmcp'),
+            __('Audit Log', 'wpmcp'),
             'manage_options',
-            'wpmcp-audit-log',
+            Audit_Log_Page::SLUG,
             [new Audit_Log_Page(), 'render']
         );
 
@@ -451,8 +471,8 @@ final class Plugin
         // it is a site-wide trust decision — manage_options, like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Handshake Instructions',
-            'Handshake',
+            __('wpmcp: Handshake Instructions', 'wpmcp'),
+            __('Handshake', 'wpmcp'),
             'manage_options',
             'wpmcp-handshake',
             [new Handshake_Settings_Page(), 'render']
@@ -464,8 +484,8 @@ final class Plugin
         // site-wide trust decisions, so manage_options like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Connection',
-            'Connection',
+            __('wpmcp: Connection', 'wpmcp'),
+            __('Connection', 'wpmcp'),
             'manage_options',
             Connection_Page::SLUG,
             [new Connection_Page(), 'render']
@@ -476,8 +496,8 @@ final class Plugin
         // like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Abilities',
-            'Abilities',
+            __('wpmcp: Abilities', 'wpmcp'),
+            __('Abilities', 'wpmcp'),
             'manage_options',
             Ability_Grid_Page::SLUG,
             [new Ability_Grid_Page(), 'render']
@@ -1557,7 +1577,7 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/query',
             'free',
-            'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN/WITH). Writes, DDL, stacked statements, and file-access SQL are rejected before execution. Results are capped',
+            'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN/WITH). Writes, DDL, stacked statements, and file-access SQL are rejected before execution. Reads of the users/usermeta tables are blocked (wpmcp_db_allow_user_table_reads filter opts in, with secrets masked). Results are capped',
             [
                 'type'       => 'object',
                 'properties' => [
@@ -1996,6 +2016,9 @@ final class Plugin
             new \WPMCP\Integrations\Meta_Box_Integration(),
             new \WPMCP\Integrations\Ninja_Forms_Integration(),
             new \WPMCP\Integrations\Fluent_Forms_Integration(),
+            new \WPMCP\Integrations\Forminator_Integration(),
+            new \WPMCP\Integrations\SureForms_Integration(),
+            new \WPMCP\Integrations\MetForm_Integration(),
         ];
 
         foreach ($integrations as $integration) {
@@ -2074,6 +2097,105 @@ final class Plugin
                 'required'   => [ 'command' ],
             ],
             [$run_wp_cli, 'handle'],
+            'manage_options',
+            'cli',
+            'update'
+        ));
+
+        $this->register_cli_job_abilities($registrar);
+    }
+
+    /**
+     * Background CLI job dispatch and polling (issue #84): the async
+     * counterpart to run-wp-cli, for commands (imports, bulk regeneration,
+     * migrations) that cannot finish inside one MCP request/response cycle.
+     * Built on the same WP-Cron job-runner pattern as trigger-backup
+     * (Cli_Job_Store + Run_Cli_Job mirror Backup_Job_Store + Run_Backup_Job).
+     *
+     * Every one of these is PRO at manage_options, domain 'cli', exactly
+     * matching run-wp-cli: dispatching a command asynchronously is the same
+     * capability as running it synchronously, so it must not be reachable
+     * at a lower tier or a weaker capability than the synchronous tool.
+     * dispatch-cli-job is 'create' (it creates a job record),
+     * cancel-cli-job is 'update' (it transitions one), and get-cli-job /
+     * list-cli-jobs are 'read'.
+     *
+     * The exec surface is dispatch-cli-job alone, and it adds no new
+     * privilege: it runs the identical Wp_Cli_Guard_Chain as run-wp-cli
+     * before a job is ever queued, and Run_Cli_Job runs that chain AGAIN
+     * immediately before execution so revoking the opt-in gate also stops
+     * work that is already queued. Rate limiting is inherited from the
+     * Registrar's per-client counter like every other ability. Not routed
+     * through Safe_Mutation, for the same reason run-wp-cli is not: a
+     * wp-cli invocation's effects have no generic before-image to snapshot.
+     */
+    private function register_cli_job_abilities(Registrar $registrar): void
+    {
+        $dispatch_cli_job = new Dispatch_Cli_Job();
+        $get_cli_job      = new Get_Cli_Job();
+        $list_cli_jobs    = new List_Cli_Jobs();
+        $cancel_cli_job   = new Cancel_Cli_Job();
+
+        $registrar->register(new Ability(
+            'wpmcp/dispatch-cli-job',
+            'pro',
+            'Queue a guarded, allowlisted wp-cli command as a background job and return its job id immediately, for long-running work (imports, bulk media regeneration) that cannot complete inside a single request. Poll it with get-cli-job. Subject to exactly the same gates as run-wp-cli: disabled by default (WPMCP_ALLOW_WP_CLI constant or wpmcp_allow_wp_cli filter), refused on production without a separate override, allowlisted subcommands only, and no shell metacharacters or non-allowlisted flags. The guard chain is re-checked immediately before the job actually runs, so closing the gate also stops jobs that are already queued. Optional timeout in seconds (default 300, max 900). Refused while too many jobs are already queued or running',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'command' => [ 'type' => 'string' ],
+                    'timeout' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'command' ],
+            ],
+            [$dispatch_cli_job, 'handle'],
+            'manage_options',
+            'cli',
+            'create'
+        ));
+        $registrar->register(new Ability(
+            'wpmcp/get-cli-job',
+            'pro',
+            'Return a background CLI job\'s current record by job id: status (queued/running/completed/failed/canceled), the command as dispatched, and once it has run its captured stdout/stderr (size-capped), exit code, and timed-out flag, or the error that stopped it. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'job_id' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'job_id' ],
+            ],
+            [$get_cli_job, 'handle'],
+            'manage_options',
+            'cli',
+            'read'
+        ));
+        $registrar->register(new Ability(
+            'wpmcp/list-cli-jobs',
+            'pro',
+            'List background CLI jobs, newest first, with an optional status filter (queued/running/completed/failed/canceled). Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'status' => [ 'type' => 'string' ],
+                ],
+            ],
+            [$list_cli_jobs, 'handle'],
+            'manage_options',
+            'cli',
+            'read'
+        ));
+        $registrar->register(new Ability(
+            'wpmcp/cancel-cli-job',
+            'pro',
+            'Cancel a queued background CLI job: unschedule its WP-Cron event and mark it canceled so it never runs. Refuses with an error if the job is unknown or is no longer queued (already running, or in a terminal status)',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'job_id' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'job_id' ],
+            ],
+            [$cancel_cli_job, 'handle'],
             'manage_options',
             'cli',
             'update'
