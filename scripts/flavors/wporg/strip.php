@@ -134,6 +134,9 @@ foreach (
     'src/Tools/Compose/Build_Page.php',
     'src/Tools/Packages/Switch_Theme.php',
     'src/Tools/Media/Media_Import_Snapshot.php',
+    // Reachable from the free build through List_Global_Classes, which stays:
+    // the read is free, only the write tools around it are the add-on.
+    'src/Tools/Elementor/Global_Classes_Store.php',
     ] as $path
 ) {
     $edits[$path][] = ["use WPMCP\\Pro\\Gate;\n", '', 1];
