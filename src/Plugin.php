@@ -182,6 +182,11 @@ use WPMCP\Tools\Elementor\Get_Global_Settings;
 use WPMCP\Tools\Elementor\Update_Global_Colors;
 use WPMCP\Tools\Elementor\Update_Global_Typography;
 use WPMCP\Tools\Elementor\List_Global_Classes;
+use WPMCP\Tools\Elementor\Create_Global_Class;
+use WPMCP\Tools\Elementor\Update_Global_Class;
+use WPMCP\Tools\Elementor\Delete_Global_Class;
+use WPMCP\Tools\Elementor\Reorder_Global_Classes;
+use WPMCP\Tools\Elementor\Global_Class_Schema;
 use WPMCP\Tools\Elementor\Export_Page;
 use WPMCP\Tools\Elementor\Save_As_Template;
 use WPMCP\Tools\Elementor\Apply_Template;
@@ -3715,7 +3720,7 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/list-global-classes',
             'pro',
-            'List the Elementor global CSS classes stored on the active kit, in their stored order (empty when the feature has not been used). Read-only',
+            'List the Elementor v4 global CSS classes of the active kit in stored order (empty when the feature has not been used), with the state_hash the global class write tools require as expected_hash. Read-only',
             [
                 'type'       => 'object',
                 'properties' => [],
@@ -3725,6 +3730,8 @@ final class Plugin
             'elementor',
             'read'
         ));
+
+        $this->register_global_class_write_abilities($registrar);
 
         $export_page = new Export_Page();
 
@@ -4197,6 +4204,147 @@ final class Plugin
         ));
 
         $this->register_elementor_structural_abilities($registrar);
+    }
+
+    /**
+     * Register the Elementor v4 global class (Class Manager) write suite
+     * (issue #132).
+     *
+     * The four tools share Global_Classes_Store: reads and writes go through
+     * Elementor's own global classes repository, so they keep working across
+     * the 4.2 storage change (classes moved from the kit's
+     * `_elementor_global_classes` meta into their own post type). Every write
+     * requires expected_hash — the whole items map is rewritten on each call,
+     * so without an optimistic lock a stale caller would silently drop a class
+     * another agent just added — and is snapshotted as a dedicated
+     * 'elementor_global_classes' operation holding the COMPLETE prior class
+     * set, which is what makes rollback-operation able to resurrect a deleted
+     * class rather than merely un-edit a surviving one.
+     *
+     * Styles are authored as friendly flat keys, converted to typed v4 props,
+     * and validated against Elementor's own Style_Schema before the write;
+     * a style key Elementor would silently discard fails the call instead.
+     * The tools register unconditionally (like every other Elementor tool
+     * here, so the advertised surface does not depend on which Elementor is
+     * installed) and refuse at execution time with a clear 'unsupported'
+     * error when the v4 class manager is absent.
+     */
+    private function register_global_class_write_abilities(Registrar $registrar): void
+    {
+        $styles_schema = [
+            'type'        => 'object',
+            'description' => 'Friendly flat styles mapped to Elementor v4 props: '
+                . implode(', ', Global_Class_Schema::style_keys())
+                . '. Each size accepts a <key>_unit (default px); colors are hex.',
+        ];
+        $props_schema = [
+            'type'        => 'object',
+            'description' => 'Raw escape hatch: CSS property => $$type-wrapped value, e.g. '
+                . '{"box-shadow":{"$$type":"box-shadow","value":[]}}. Merged over the built styles and validated the same way.',
+        ];
+        $breakpoint_schema = [
+            'type'        => 'string',
+            'enum'        => Global_Class_Schema::BREAKPOINTS,
+            'description' => 'Breakpoint this variant targets (default desktop).',
+        ];
+        $state_schema = [
+            'type'        => 'string',
+            'description' => 'Optional state for this variant (hover, active, focus, focus-visible, checked, e--selected, e--disabled). Omit for the normal state.',
+        ];
+
+        $create_global_class = new Create_Global_Class();
+
+        $registrar->register(new Ability(
+            'wpmcp/create-global-class',
+            'pro',
+            'Create an Elementor v4 global CSS class (Class Manager) with a label and styles, returning the new g- id to apply to elements. Pass friendly "styles" and/or raw $$type "props" plus an optional breakpoint/state; styles are validated against Elementor\'s own style schema, so a property Elementor would silently drop is refused instead. Requires expected_hash from list-global-classes. Snapshotted, so rollback-operation removes the class again',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'expected_hash' => [ 'type' => 'string' ],
+                    'label'         => [ 'type' => 'string' ],
+                    'styles'        => $styles_schema,
+                    'props'         => $props_schema,
+                    'breakpoint'    => $breakpoint_schema,
+                    'state'         => $state_schema,
+                ],
+                'required'   => [ 'expected_hash', 'label' ],
+            ],
+            [$create_global_class, 'handle'],
+            'manage_options',
+            'elementor',
+            'create'
+        ));
+
+        $update_global_class = new Update_Global_Class();
+
+        $registrar->register(new Ability(
+            'wpmcp/update-global-class',
+            'pro',
+            'Update an Elementor v4 global class by g- id: rename it and/or merge styles into the variant for one breakpoint + state (replace_variant:true replaces that variant instead of merging), so an unrelated responsive or hover rule survives. Requires expected_hash from list-global-classes. Snapshotted and undoable via rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'expected_hash'   => [ 'type' => 'string' ],
+                    'id'              => [ 'type' => 'string' ],
+                    'label'           => [ 'type' => 'string' ],
+                    'styles'          => $styles_schema,
+                    'props'           => $props_schema,
+                    'breakpoint'      => $breakpoint_schema,
+                    'state'           => $state_schema,
+                    'replace_variant' => [ 'type' => 'boolean' ],
+                ],
+                'required'   => [ 'expected_hash', 'id' ],
+            ],
+            [$update_global_class, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
+
+        $delete_global_class = new Delete_Global_Class();
+
+        $registrar->register(new Ability(
+            'wpmcp/delete-global-class',
+            'pro',
+            'Delete an Elementor v4 global class by g- id. Without confirm:true this is a dry run that scans _elementor_data and reports every post applying the class, so the blast radius is known before committing; with confirm:true the class is deleted after the whole class set is snapshotted, so rollback-operation resurrects it. Requires expected_hash from list-global-classes',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'expected_hash' => [ 'type' => 'string' ],
+                    'id'            => [ 'type' => 'string' ],
+                    'confirm'       => [ 'type' => 'boolean' ],
+                ],
+                'required'   => [ 'expected_hash', 'id' ],
+            ],
+            [$delete_global_class, 'handle'],
+            'manage_options',
+            'elementor',
+            'delete'
+        ));
+
+        $reorder_global_classes = new Reorder_Global_Classes();
+
+        $registrar->register(new Ability(
+            'wpmcp/reorder-global-classes',
+            'pro',
+            'Set the order of the Elementor v4 global classes. Class Manager order IS the CSS source order, so it decides which class wins when two apply at equal specificity. Pass { order: [g-id, ...] }; classes you omit are appended after in their current relative order (append-never-drop) and an unknown id is refused. Requires expected_hash from list-global-classes. Snapshotted and undoable',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'expected_hash' => [ 'type' => 'string' ],
+                    'order'         => [
+                        'type'  => 'array',
+                        'items' => [ 'type' => 'string' ],
+                    ],
+                ],
+                'required'   => [ 'expected_hash', 'order' ],
+            ],
+            [$reorder_global_classes, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
     }
 
     /**

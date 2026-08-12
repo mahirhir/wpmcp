@@ -58,6 +58,53 @@ class Atomic_Props
         return ['$$type' => 'link', 'value' => $value];
     }
 
+    /**
+     * A CSS length prop ({ size, unit }), the shape every Size_Prop_Type style
+     * key in Elementor's style schema expects (width, gap, font-size, ...).
+     *
+     * @param int|float|string $value
+     */
+    public static function size($value, string $unit = 'px'): array
+    {
+        return [
+            '$$type' => 'size',
+            'value'  => [
+                'size' => is_numeric($value) ? $value + 0 : 0,
+                'unit' => '' !== $unit ? $unit : 'px',
+            ],
+        ];
+    }
+
+    /** A Color_Prop_Type value (the `color`, `border-color`, ... style keys). */
+    public static function color(string $value): array
+    {
+        return ['$$type' => 'color', 'value' => $value];
+    }
+
+    /**
+     * Elementor has no `background-color` style key: background is a single
+     * Background_Prop_Type whose value carries a nested color prop.
+     */
+    public static function background_color(string $value): array
+    {
+        return [
+            '$$type' => 'background',
+            'value'  => ['color' => self::color($value)],
+        ];
+    }
+
+    /**
+     * A Dimensions_Prop_Type value (padding / margin). Sides are the logical
+     * CSS keys block-start, block-end, inline-start, inline-end, each a size
+     * prop; omitted sides are simply not set.
+     *
+     * @param array<string,array> $sides
+     */
+    public static function dimensions(array $sides): array
+    {
+        return ['$$type' => 'dimensions', 'value' => $sides];
+    }
+
     public static function image(int $image_id, string $image_url = '', string $alt = ''): array
     {
         $src = $image_id > 0
