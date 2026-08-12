@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 281,
-    'free'      => 193,
+    'total'     => 283,
+    'free'      => 195,
     'pro'       => 88,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -226,6 +226,7 @@ return [
         'wpmcp/pmpro-write' => 'free',
         'wpmcp/query' => 'free',
         'wpmcp/read-file' => 'free',
+        'wpmcp/reindex-search' => 'free',
         'wpmcp/remove-block' => 'free',
         'wpmcp/remove-element' => 'pro',
         'wpmcp/remove-menu-item' => 'free',
@@ -243,6 +244,7 @@ return [
         'wpmcp/save-as-template' => 'pro',
         'wpmcp/scan-security' => 'free',
         'wpmcp/schedule-event' => 'free',
+        'wpmcp/search-content' => 'free',
         'wpmcp/search-files' => 'free',
         'wpmcp/search-plugins' => 'free',
         'wpmcp/search-stock-images' => 'free',
