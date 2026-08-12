@@ -106,20 +106,29 @@ class RegistrarRequestLogTest extends \WP_UnitTestCase
     }
 
     /**
-     * The Abilities API turns a thrown handler exception into a generic
-     * ability_callback_exception WP_Error, which tells an admin nothing about
-     * what actually broke. The wrapper re-throws rather than swallowing, so
-     * that generic contract is unchanged, but the log keeps the real
-     * exception class.
+     * The wrapper re-throws a handler exception rather than swallowing it, so
+     * whatever the Abilities API does with it is unchanged, while the log
+     * keeps the real exception class behind it.
+     *
+     * What the caller sees is version-dependent and deliberately not the
+     * point of this test: WP 7.0+ catches Throwable in WP_Ability and hands
+     * back a generic ability_callback_exception WP_Error (which tells an
+     * admin nothing about what actually broke, hence this log), while WP 6.9
+     * has no such catch and lets the exception out. CI runs 6.9, so both
+     * paths are asserted.
      */
     public function test_a_thrown_exception_is_logged_with_its_class_and_still_propagates(): void
     {
         $this->admin_user();
 
-        $result = $this->ability('wpmcp/get-post')->execute(['post_id' => 99999999]);
+        try {
+            $result = $this->ability('wpmcp/get-post')->execute(['post_id' => 99999999]);
 
-        $this->assertInstanceOf(\WP_Error::class, $result);
-        $this->assertSame('ability_callback_exception', $result->get_error_code());
+            $this->assertInstanceOf(\WP_Error::class, $result);
+            $this->assertSame('ability_callback_exception', $result->get_error_code());
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('Post not found', $e->getMessage());
+        }
 
         $row = $this->row_for('wpmcp/get-post');
 
