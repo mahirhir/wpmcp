@@ -70,6 +70,27 @@ class Atomic_Element
     }
 
     /**
+     * The `coerced` / `warnings` tail every atomic tool appends to its result
+     * when the shared prop mapper had to repair or refuse something. Empty
+     * lists are omitted so a clean write keeps its existing response shape.
+     *
+     * @param array{coerced: array, warnings: array} $mapped Result of Atomic_Props::map().
+     */
+    public static function report(array $mapped): array
+    {
+        $out = [];
+
+        if ([] !== ($mapped['coerced'] ?? [])) {
+            $out['coerced'] = array_values($mapped['coerced']);
+        }
+        if ([] !== ($mapped['warnings'] ?? [])) {
+            $out['warnings'] = array_values($mapped['warnings']);
+        }
+
+        return $out;
+    }
+
+    /**
      * Raw snapshot-first write of an element tree to `_elementor_data`,
      * verifying the normalized stored tree matches what was intended.
      *

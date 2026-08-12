@@ -23,12 +23,19 @@ class ToolsListBudgetTest extends \WP_UnitTestCase
      *  (Gravity Forms, Formidable, Contact Form 7, WPForms); raised 110000 ->
      *  135000 in review for the EMCP Elementor parity expansion (global Kit,
      *  templates, theme builder, atomic elements, popups, dynamic tags);
-     *  raised 135000 -> 142000 in review for the Elementor v4 global class
-     *  write suite (create/update/delete/reorder-global-class), whose two
-     *  authoring tools advertise the full friendly style-key list so an agent
-     *  can style a class without a second schema round trip.
+     *  raised 135000 -> 140000 in review for the forms breadth cluster
+     *  (Forminator, SureForms, MetForm), which put the payload at 135470
+     *  bytes over 266 tools; raised 140000 -> 150000 in review for the
+     *  accessibility and SEO auto-fixers (fix-color-contrast,
+     *  add-alt-text-from-context, fix-link-text), which puts the payload at
+     *  139656 bytes over 273 tools; raised 150000 -> 155000 in review for the
+     *  Elementor v4 global class write suite
+     *  (create/update/delete/reorder-global-class), whose two authoring tools
+     *  advertise the full friendly style-key list so an agent can style a
+     *  class without a second schema round trip, which puts the payload at
+     *  148066 bytes over 281 tools.
      *  Compact tool mode keeps clients with tool caps at ~2.8KB regardless. */
-    private const TOOLS_LIST_BYTE_BUDGET = 142000;
+    private const TOOLS_LIST_BYTE_BUDGET = 155000;
 
     /** @return array<int, array<string, mixed>> tools/list-shaped entries. */
     private static function payload(): array

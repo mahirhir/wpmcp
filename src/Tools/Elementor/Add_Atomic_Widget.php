@@ -27,6 +27,12 @@ class Add_Atomic_Widget
             return $settings;
         }
 
+        // Everything an agent supplies goes through the one shared mapper, so
+        // an aliased prop name, a bare string, or a value wrapped in the wrong
+        // $$type lands as the prop Elementor actually declares (issue #137).
+        $mapped   = Atomic_Props::map($widget_type, $settings);
+        $settings = $mapped['settings'];
+
         $read = Element_Tree::read_for_edit($args);
         if (is_wp_error($read)) {
             return $read;
@@ -46,7 +52,9 @@ class Add_Atomic_Widget
             return $out;
         }
 
-        return $out + ['element_id' => $element['id'], 'widget_type' => $widget_type];
+        return $out
+            + ['element_id' => $element['id'], 'widget_type' => $widget_type]
+            + Atomic_Element::report($mapped);
     }
 
     /**

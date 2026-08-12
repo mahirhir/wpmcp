@@ -2,6 +2,8 @@
 
 namespace WPMCP\Auth;
 
+use WPMCP\MCP\Transport_Guard;
+
 if (! defined('ABSPATH')) {
     exit;
 }
@@ -127,6 +129,12 @@ class Endpoints
             return $payload;
         }
 
+        // The well-known documents are served outside the REST stack (see
+        // the class docblock), so Transport_Guard's rest_pre_serve hook
+        // never sees them. They still must not be cached: a proxy holding
+        // an old authorization-server document after a domain change points
+        // every new client at endpoints that no longer exist (issue #133).
+        Transport_Guard::send_no_store_headers();
         header('Content-Type: application/json');
         echo wp_json_encode($payload);
         exit;

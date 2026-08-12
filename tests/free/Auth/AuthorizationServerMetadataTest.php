@@ -34,7 +34,9 @@ class AuthorizationServerMetadataTest extends \WP_UnitTestCase
     {
         $doc = Authorization_Server_Metadata::build('https://example.com');
 
-        $this->assertSame(['authorization_code'], $doc['grant_types_supported']);
+        // refresh_token joined authorization_code in issue #133 (rotation
+        // with an idempotent-refresh grace window and reuse detection).
+        $this->assertSame(['authorization_code', 'refresh_token'], $doc['grant_types_supported']);
     }
 
     public function test_only_s256_pkce_method_is_advertised(): void
