@@ -6,3 +6,4 @@ CLAUDE.md
 /.playwright-mcp/
 /dist/
 .env.freemius
+/build/

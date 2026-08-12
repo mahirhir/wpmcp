@@ -222,7 +222,7 @@ class Audit_Log_Page
     private function render_filter_form(array $filters): void
     {
         echo '<form method="get">';
-        printf('<input type="hidden" name="page" value="%s" />', esc_attr((string) ($_GET['page'] ?? self::SLUG)));
+        printf('<input type="hidden" name="page" value="%s" />', esc_attr(isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : self::SLUG));
         printf('<input type="hidden" name="tab" value="%s" />', esc_attr(self::TAB_MUTATIONS));
         printf(
             '<input type="text" name="tool_name" placeholder="%s" value="%s" />',

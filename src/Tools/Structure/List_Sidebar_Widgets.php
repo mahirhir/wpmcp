@@ -24,7 +24,11 @@ class List_Sidebar_Widgets
             throw new \InvalidArgumentException("Sidebar \"{$sidebar_id}\" is not registered.");
         }
 
-        $sidebars_widgets = wp_get_sidebars_widgets();
+        // wp_get_sidebars_widgets() is on Plugin Check's forbidden-functions
+        // list (it is a private core helper). The option it reads is the same
+        // data, minus the theme-switch normalisation this read-only tool has
+        // no use for.
+        $sidebars_widgets = (array) get_option('sidebars_widgets', []);
         $widget_ids       = $sidebars_widgets[ $sidebar_id ] ?? [];
 
         $widgets = [];

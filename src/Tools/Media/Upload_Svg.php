@@ -36,7 +36,7 @@ class Upload_Svg
                 }
                 $markup = (string) file_get_contents($tmp);
             } finally {
-                @unlink($tmp); // phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
+                wp_delete_file($tmp);
             }
             $filename = Remote_Image_Guard::safe_filename($url, 'image.svg');
         }
@@ -82,7 +82,7 @@ class Upload_Svg
             true
         );
         if (is_wp_error($media_id)) {
-            @unlink($upload['file']); // phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
+            wp_delete_file($upload['file']);
             throw new \RuntimeException('The SVG attachment could not be created: ' . $media_id->get_error_message());
         }
         $media_id = (int) $media_id;
