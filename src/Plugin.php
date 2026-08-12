@@ -43,6 +43,8 @@ use WPMCP\Tools\Analysis\Analyze_Accessibility;
 use WPMCP\Admin\Handshake_Settings_Page;
 use WPMCP\Admin\Connection_Page;
 use WPMCP\Admin\Ability_Grid_Page;
+use WPMCP\Admin\Redirect_Suggestion_Controller;
+use WPMCP\Admin\Redirects_Page;
 use WPMCP\Governance\Default_Seeder;
 use WPMCP\Connect\Exposure;
 use WPMCP\MCP\Ability;
@@ -76,6 +78,14 @@ use WPMCP\Tools\I18n\Link_Post_Translations;
 use WPMCP\Tools\Linking\Find_Orphan_Posts;
 use WPMCP\Tools\Linking\Suggest_Internal_Links;
 use WPMCP\Tools\Linking\Get_Link_Map;
+use WPMCP\Tools\Redirects\Create_Redirect;
+use WPMCP\Tools\Redirects\Delete_Redirect;
+use WPMCP\Tools\Redirects\Find_Broken_Links;
+use WPMCP\Tools\Redirects\List_Redirects;
+use WPMCP\Tools\Redirects\Redirect_Handler;
+use WPMCP\Tools\Redirects\Redirect_Store;
+use WPMCP\Tools\Redirects\Run_Broken_Link_Scan;
+use WPMCP\Tools\Redirects\Update_Redirect;
 use WPMCP\Tools\Connect\Get_Connection_Info;
 use WPMCP\Tools\Connect\List_Tool_Catalog;
 use WPMCP\Tools\Content\List_Post_Types;
@@ -281,8 +291,8 @@ final class Plugin
      */
     private const FLAVOR_GROUPS = [
         'woocommerce' => [
-            'compose', 'woocommerce', 'menu', 'seo', 'linking', 'meta',
-            'diagnostics', 'cron', 'maintenance', 'context', 'block',
+            'compose', 'woocommerce', 'menu', 'seo', 'linking', 'redirects',
+            'meta', 'diagnostics', 'cron', 'maintenance', 'context', 'block',
             'structure', 'export', 'backup', 'analysis', 'connect',
             'governance',
         ],
@@ -364,6 +374,27 @@ final class Plugin
             // does not fire for wp-admin or REST requests, so authenticated capable
             // users, wp-admin, and the REST/MCP endpoints are never affected by it.
             add_action('template_redirect', [new Maintenance_Guard(), 'enforce']);
+            // Managed redirects (issue #128), at priority 1 so an explicitly
+            // configured redirect wins over core's redirect_canonical guess
+            // (priority 10) for a path whose post was renamed or removed. When
+            // no managed redirect matches, this does nothing and canonical
+            // behavior is untouched. See Redirect_Handler's docblock.
+            add_action('template_redirect', [new Redirect_Handler(), 'maybe_redirect'], Redirect_Handler::PRIORITY);
+            // The WP-Cron executor for a background broken-link scan: one
+            // batch per run, rescheduling itself until the scan completes.
+            add_action(Run_Broken_Link_Scan::HOOK, [new Run_Broken_Link_Scan(), 'handle']);
+            // Confirm/dismiss for pending redirect suggestions. Confirming
+            // calls the create-redirect tool, so there is no second path that
+            // can produce a redirect. See Redirect_Suggestion_Controller.
+            add_action(
+                'wp_ajax_' . Redirect_Suggestion_Controller::ACTION,
+                [new Redirect_Suggestion_Controller(), 'handle']
+            );
+            // Self-healing schema creation for sites that upgraded into the
+            // redirect feature without re-activating the plugin. Guarded by a
+            // db-version option and hooked in wp-admin only, so no front-end
+            // request ever risks DDL.
+            add_action('admin_init', [Redirect_Store::class, 'maybe_install']);
             // OAuth 2.1 + Dynamic Client Registration REST routes (issue #43).
             // Endpoints::register() itself no-ops unless OAuth_Config::is_enabled()
             // (default false), so this hook registration is always safe to add.
@@ -478,6 +509,19 @@ final class Plugin
             'manage_options',
             Ability_Grid_Page::SLUG,
             [new Ability_Grid_Page(), 'render']
+        );
+
+        // Redirects (issue #128): shows the managed redirect table and the
+        // pending suggestion queue, and is where a human confirms a
+        // suggestion into a real redirect. Changing site-wide routing is a
+        // manage_options decision, like the rest.
+        add_submenu_page(
+            'wpmcp',
+            'wpmcp: Redirects',
+            'Redirects',
+            'manage_options',
+            Redirects_Page::SLUG,
+            [new Redirects_Page(), 'render']
         );
     }
 
@@ -1827,6 +1871,7 @@ final class Plugin
             'seo'            => fn () => $this->register_seo_abilities($registrar),
             'i18n'           => fn () => $this->register_i18n_abilities($registrar),
             'linking'        => fn () => $this->register_linking_abilities($registrar),
+            'redirects'      => fn () => $this->register_redirect_abilities($registrar),
             'meta'           => fn () => $this->register_meta_abilities($registrar),
             'diagnostics'    => fn () => $this->register_diagnostics_abilities($registrar),
             'cron'           => fn () => $this->register_cron_abilities($registrar),
@@ -5192,6 +5237,129 @@ final class Plugin
                 ],
             ],
             [$get_link_map, 'handle'],
+            'edit_posts',
+            'seo',
+            'read'
+        ));
+    }
+
+    /**
+     * The redirect manager (issue #128): CRUD over the managed redirect table
+     * plus the broken-link scanner. Domain 'seo', so the existing governance
+     * domain toggle that covers the linking tools covers these too.
+     *
+     * Reads are edit_posts (an editor should be able to see why a URL bounces
+     * and which links are dead); the three writes are manage_options, because
+     * a redirect changes site-wide routing for every visitor. Every write
+     * runs through Safe_Mutation with object_type 'redirect' and is undoable
+     * with rollback-operation.
+     *
+     * There is no create-redirect-from-suggestion tool: deleting a post or
+     * moving a published URL only ever emits a suggested_redirect in its own
+     * response, and turning that into a live redirect always takes an
+     * explicit create-redirect call.
+     */
+    private function register_redirect_abilities(Registrar $registrar): void
+    {
+        $registrar->register(new Ability(
+            'wpmcp/list-redirects',
+            'free',
+            'List this site\'s managed redirects (source path, resolved target, status code, enabled, hit count), plus the pending redirect suggestions raised when a published post was deleted or moved. Filter by enabled state or a search string. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'enabled' => [ 'type' => 'boolean' ],
+                    'search'  => [ 'type' => 'string' ],
+                    'limit'   => [ 'type' => 'integer' ],
+                    'offset'  => [ 'type' => 'integer' ],
+                ],
+            ],
+            [new List_Redirects(), 'handle'],
+            'edit_posts',
+            'seo',
+            'read'
+        ));
+
+        $registrar->register(new Ability(
+            'wpmcp/create-redirect',
+            'free',
+            'Create a managed redirect from a source path to a target URL or target_post_id (a post id keeps working after that post\'s slug changes). Chains are flattened to a single hop and loops are refused; the response reports the stored target. Snapshotted, so rollback-operation removes it',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'source'         => [ 'type' => 'string' ],
+                    'target'         => [ 'type' => 'string' ],
+                    'target_post_id' => [ 'type' => 'integer' ],
+                    'status_code'    => [ 'type' => 'integer', 'enum' => Redirect_Store::ALLOWED_STATUS_CODES ],
+                    'enabled'        => [ 'type' => 'boolean' ],
+                    'notes'          => [ 'type' => 'string' ],
+                    'session_id'     => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'source' ],
+            ],
+            [new Create_Redirect(), 'handle'],
+            'manage_options',
+            'seo',
+            'create'
+        ));
+
+        $registrar->register(new Ability(
+            'wpmcp/update-redirect',
+            'free',
+            'Change one managed redirect: its source, target/target_post_id, status code, enabled state or notes. Only the fields you pass change. Retargeting re-runs chain flattening and loop detection. Snapshotted and reversible',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'redirect_id'    => [ 'type' => 'integer' ],
+                    'source'         => [ 'type' => 'string' ],
+                    'target'         => [ 'type' => 'string' ],
+                    'target_post_id' => [ 'type' => 'integer' ],
+                    'status_code'    => [ 'type' => 'integer', 'enum' => Redirect_Store::ALLOWED_STATUS_CODES ],
+                    'enabled'        => [ 'type' => 'boolean' ],
+                    'notes'          => [ 'type' => 'string' ],
+                    'session_id'     => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'redirect_id' ],
+            ],
+            [new Update_Redirect(), 'handle'],
+            'manage_options',
+            'seo',
+            'update'
+        ));
+
+        $registrar->register(new Ability(
+            'wpmcp/delete-redirect',
+            'free',
+            'Delete one managed redirect. The whole row is snapshotted first, so rollback-operation brings the same redirect back; use update-redirect with enabled:false instead to stop it firing while keeping its hit history',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'redirect_id' => [ 'type' => 'integer' ],
+                    'session_id'  => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'redirect_id' ],
+            ],
+            [new Delete_Redirect(), 'handle'],
+            'manage_options',
+            'seo',
+            'delete'
+        ));
+
+        $registrar->register(new Ability(
+            'wpmcp/find-broken-links',
+            'free',
+            'Scan published content for internal links that are dead, point at a post that is not public yet, or go through a redirect instead of straight to its target. Call with background:true to queue a batched scan, then with scan_id to poll its progress and findings. Read-only: it proposes fixes and changes nothing',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_types' => [ 'type' => 'array', 'items' => [ 'type' => 'string' ] ],
+                    'limit'      => [ 'type' => 'integer' ],
+                    'background' => [ 'type' => 'boolean' ],
+                    'batch_size' => [ 'type' => 'integer' ],
+                    'scan_id'    => [ 'type' => 'integer' ],
+                ],
+            ],
+            [new Find_Broken_Links(), 'handle'],
             'edit_posts',
             'seo',
             'read'

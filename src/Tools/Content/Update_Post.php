@@ -3,6 +3,8 @@
 namespace WPMCP\Tools\Content;
 
 use WPMCP\Safety\Safe_Mutation;
+use WPMCP\Tools\Redirects\Redirect_Store;
+use WPMCP\Tools\Redirects\Redirect_Suggestions;
 
 if (! defined('ABSPATH')) {
     exit;
@@ -11,6 +13,50 @@ if (! defined('ABSPATH')) {
 class Update_Post
 {
     private const VALID_STATUSES = ['draft', 'publish', 'pending', 'private', 'future'];
+
+    /**
+     * When this edit moved a PUBLISHED post to a new URL, queue (and return) a
+     * suggestion that the old URL be redirected to the new one.
+     *
+     * SUGGESTION ONLY: renaming a slug must not silently change site-wide
+     * routing. The old URL is a real address people and search engines already
+     * hold, and deciding what happens to it is a routing decision, not a
+     * content edit, so it takes an explicit create-redirect call (or a human
+     * clicking Create on the Redirects screen, which calls the same tool).
+     *
+     * Only publish -> publish moves qualify: an unpublished post had no public
+     * URL to lose, and a draft being published is gaining one.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function suggest_redirect(int $post_id, string $old_url, string $old_status): ?array
+    {
+        if ('publish' !== $old_status || '' === $old_url) {
+            return null;
+        }
+        if ('publish' !== get_post_status($post_id)) {
+            return null;
+        }
+
+        $new_url = get_permalink($post_id);
+        $new_url = is_string($new_url) ? $new_url : '';
+        if ('' === $new_url) {
+            return null;
+        }
+
+        $old_path = Redirect_Store::normalize_path($old_url);
+        $new_path = Redirect_Store::normalize_path($new_url);
+        if ($old_path === $new_path) {
+            return null;
+        }
+
+        return Redirect_Suggestions::propose(
+            $old_path,
+            Redirect_Suggestions::REASON_SLUG_CHANGED,
+            $post_id,
+            sprintf('The published URL moved from %s to %s.', $old_path, $new_path)
+        );
+    }
 
     public function handle(array $args): array
     {
@@ -31,6 +77,9 @@ class Update_Post
         if (isset($args['status']) && ! in_array($args['status'], self::VALID_STATUSES, true)) {
             throw new \InvalidArgumentException('Invalid status.');
         }
+
+        $old_status = (string) $post->post_status;
+        $old_url    = 'publish' === $old_status ? (string) get_permalink($post_id) : '';
 
         $out = Safe_Mutation::run(
             [
@@ -86,6 +135,12 @@ class Update_Post
             }
         );
 
-        return ['operation_id' => $out['operation_id'], 'post_id' => $post_id];
+        $result     = ['operation_id' => $out['operation_id'], 'post_id' => $post_id];
+        $suggestion = $this->suggest_redirect($post_id, $old_url, $old_status);
+        if (null !== $suggestion) {
+            $result['suggested_redirect'] = $suggestion;
+        }
+
+        return $result;
     }
 }
