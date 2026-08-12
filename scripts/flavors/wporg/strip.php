@@ -43,7 +43,10 @@ const REMOVED_PATHS = [
     'src/Pro',
     'src/Freemius',
     // Paid ability groups, whole. These are the add-on.
-    'src/Cloud',
+    // Note: src/Cloud stays. Cloud_Client and Cloud_Config are a plain HTTP
+    // seam and an option store with no paid gating in them, and the free
+    // announcements feed in src/Admin/Announcements.php fetches through
+    // Cloud_Client. The paid part is the ability wrappers below, not the seam.
     'src/Tools/Cloud',
     'src/Tools/Analysis',
     'src/Tools/Builders',
