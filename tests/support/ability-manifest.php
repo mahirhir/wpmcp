@@ -15,9 +15,9 @@
  */
 
 return [
-    'total'     => 260,
+    'total'     => 263,
     'free'      => 187,
-    'pro'       => 73,
+    'pro'       => 76,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
         'wpmcp/acf-write' => 'free',
@@ -198,6 +198,9 @@ return [
         'wpmcp/list-widgets' => 'free',
         'wpmcp/mec-read' => 'free',
         'wpmcp/mec-write' => 'free',
+        'wpmcp/memory-propose' => 'pro',
+        'wpmcp/memory-recall' => 'pro',
+        'wpmcp/memory-save-summary' => 'pro',
         'wpmcp/metabox-read' => 'free',
         'wpmcp/metabox-write' => 'free',
         'wpmcp/moderate-comment' => 'free',

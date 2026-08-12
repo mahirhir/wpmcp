@@ -2,6 +2,8 @@
 
 namespace WPMCP\MCP;
 
+use WPMCP\Memory\Memory_Store;
+
 if (! defined('ABSPATH')) {
     exit;
 }
@@ -39,6 +41,9 @@ class Handshake_Instructions
     /** Upper bound (characters) on the site name inside the auto-summary. */
     public const MAX_SITE_NAME_LENGTH = 120;
 
+    /** Upper bound (characters) on the injected project-memory block. */
+    public const MAX_MEMORY_LENGTH = 1500;
+
     public function build(): string
     {
         $parts = [];
@@ -50,7 +55,57 @@ class Handshake_Instructions
 
         $parts[] = $this->can_view_site_context() ? $this->auto_summary() : $this->safety_line();
 
+        $memory = $this->memory_block();
+        if ('' !== $memory) {
+            $parts[] = $memory;
+        }
+
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * The approved project-memory block (issue #131), or '' when the site has
+     * published no entries.
+     *
+     * Only PUBLISHED entries appear: an agent proposal sits pending and
+     * inert until an administrator approves it, so this channel can never be
+     * used by one session to plant instructions for the next. That makes the
+     * block admin-authored content in the same sense as admin_text(), which
+     * is why it is served on the same terms rather than behind the
+     * get-site-context permission gate (it discloses no queryable site data,
+     * only the guidance an administrator chose to broadcast).
+     *
+     * Enforced guardrails are listed first and labelled as enforced, because
+     * they are: the server denies them in Registrar::is_permitted(), so an
+     * agent that ignores the text still cannot perform the action.
+     */
+    public function memory_block(): string
+    {
+        $entries = Memory_Store::guidance(50);
+        if ([] === $entries) {
+            return '';
+        }
+
+        $enforced = [];
+        $advisory = [];
+        foreach ($entries as $entry) {
+            if ('block' === $entry['severity']) {
+                $enforced[] = sprintf('%s [%s]', $entry['text'], implode(' ', $entry['targets']));
+                continue;
+            }
+            $advisory[] = $entry['text'];
+        }
+
+        $lines = ['## Project memory (approved by this site\'s administrator)'];
+        if ([] !== $enforced) {
+            $lines[] = 'Enforced guardrails, refused by the server (not advice): ' . implode(' | ', $enforced);
+        }
+        if ([] !== $advisory) {
+            $lines[] = 'Notes: ' . implode(' | ', $advisory);
+        }
+        $lines[] = 'Call memory-recall for the full set and session history.';
+
+        return $this->clamp(implode("\n", $lines), self::MAX_MEMORY_LENGTH);
     }
 
     /**

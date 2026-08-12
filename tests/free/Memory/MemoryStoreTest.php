@@ -1,0 +1,322 @@
+<?php
+
+namespace WPMCP\Tests\Free\Memory;
+
+use WPMCP\Memory\Memory_Store;
+
+/**
+ * The wpmcp_memory store and, above all, its trust gate (issue #131).
+ *
+ * The property these tests exist to defend: NOTHING on the agent-facing path
+ * can produce a published entry. propose() hard-codes 'pending' and takes no
+ * status argument, so a pending proposal is invisible to guidance(),
+ * sessions() and block_rules() until an administrator publishes it.
+ */
+class MemoryStoreTest extends \WP_UnitTestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Memory_Store::ensure_post_type();
+        Memory_Store::flush_rules_cache();
+    }
+
+    protected function tearDown(): void
+    {
+        // block_rules() memoizes in a static, which outlives the per-test
+        // database rollback; leaving it primed would leak rules into the
+        // next test's permission checks.
+        Memory_Store::flush_rules_cache();
+        parent::tearDown();
+    }
+
+    public function test_a_proposal_is_always_pending(): void
+    {
+        $id = Memory_Store::propose(['text' => 'Headers are built with the child theme.']);
+
+        $this->assertIsInt($id);
+        $this->assertSame('pending', get_post_status($id));
+        $this->assertSame('pending', Memory_Store::get($id)['status']);
+    }
+
+    public function test_an_invalid_proposal_returns_the_validator_error(): void
+    {
+        $this->assertWPError(Memory_Store::propose(['text' => '']));
+    }
+
+    public function test_a_pending_entry_is_not_guidance_and_is_not_a_rule(): void
+    {
+        Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+
+        $this->assertSame([], Memory_Store::guidance());
+        $this->assertSame([], Memory_Store::block_rules());
+    }
+
+    public function test_publishing_is_what_makes_an_entry_guidance_and_a_rule(): void
+    {
+        $id = Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+
+        $this->assertTrue(Memory_Store::approve($id));
+
+        $guidance = Memory_Store::guidance();
+        $this->assertCount(1, $guidance);
+        $this->assertSame($id, $guidance[0]['id']);
+
+        $rules = Memory_Store::block_rules();
+        $this->assertCount(1, $rules);
+        $this->assertSame(['post_id:99'], $rules[0]['targets']);
+    }
+
+    public function test_unpublishing_immediately_un_enforces_the_rule(): void
+    {
+        $id = Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+        Memory_Store::approve($id);
+        $this->assertCount(1, Memory_Store::block_rules());
+
+        $this->assertTrue(Memory_Store::unpublish($id));
+
+        $this->assertSame([], Memory_Store::block_rules());
+    }
+
+    public function test_approve_and_unpublish_refuse_anything_that_is_not_a_memory_entry(): void
+    {
+        $post = self::factory()->post->create();
+
+        $this->assertFalse(Memory_Store::approve($post));
+        $this->assertFalse(Memory_Store::unpublish($post));
+        $this->assertFalse(Memory_Store::approve(0));
+        $this->assertNull(Memory_Store::get($post));
+        $this->assertFalse(Memory_Store::is_entry($post));
+    }
+
+    /**
+     * Defense in depth: block_rules() drops any published block entry whose
+     * targets were emptied out after publication (a direct DB edit, a botched
+     * import), because an untargeted rule would widen into "deny everything".
+     */
+    public function test_a_published_block_entry_with_no_targets_is_not_enforced(): void
+    {
+        $id = Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+        Memory_Store::approve($id);
+
+        update_post_meta($id, Memory_Store::META_TARGETS, []);
+        Memory_Store::flush_rules_cache();
+
+        $this->assertSame([], Memory_Store::block_rules());
+    }
+
+    public function test_session_summaries_are_kept_out_of_the_guidance_set(): void
+    {
+        $fact    = Memory_Store::propose(['text' => 'A durable fact.']);
+        $session = Memory_Store::propose(['text' => 'Session did things.', 'kind' => 'session-summary']);
+        Memory_Store::approve($fact);
+        Memory_Store::approve($session);
+
+        $guidance = array_column(Memory_Store::guidance(), 'id');
+        $sessions = array_column(Memory_Store::sessions(), 'id');
+
+        $this->assertSame([$fact], $guidance);
+        $this->assertSame([$session], $sessions);
+    }
+
+    public function test_topic_filter_matches_title_text_and_targets(): void
+    {
+        $a = Memory_Store::propose(['text' => 'The checkout page is generated by WooCommerce.']);
+        $b = Memory_Store::propose(['text' => 'Menus live in the customizer.']);
+        Memory_Store::approve($a);
+        Memory_Store::approve($b);
+
+        $this->assertSame([$a], array_column(Memory_Store::guidance(20, 'woocommerce'), 'id'));
+        $this->assertSame([$b], array_column(Memory_Store::guidance(20, 'CUSTOMIZER'), 'id'));
+        $this->assertSame([], Memory_Store::guidance(20, 'nothing-matches-this'));
+    }
+
+    public function test_pending_count_counts_only_pending_entries(): void
+    {
+        $a = Memory_Store::propose(['text' => 'One.']);
+        Memory_Store::propose(['text' => 'Two.']);
+        Memory_Store::approve($a);
+
+        $this->assertSame(1, Memory_Store::pending_count());
+    }
+
+    public function test_update_fields_revalidates_and_rewrites_the_classification(): void
+    {
+        $id = Memory_Store::propose(['text' => 'Something.']);
+
+        $result = Memory_Store::update_fields($id, [
+            'title'    => 'Homepage guardrail',
+            'text'     => 'Never touch the homepage.',
+            'kind'     => 'guardrail',
+            'severity' => 'block',
+            'targets'  => ['post_id:5'],
+        ]);
+
+        $this->assertTrue($result);
+        $entry = Memory_Store::get($id);
+        $this->assertSame('guardrail', $entry['kind']);
+        $this->assertSame('block', $entry['severity']);
+        $this->assertSame(['post_id:5'], $entry['targets']);
+        $this->assertSame('Homepage guardrail', $entry['title']);
+        $this->assertSame('Never touch the homepage.', $entry['text']);
+    }
+
+    public function test_update_fields_rejects_an_invalid_edit_and_an_unknown_id(): void
+    {
+        $id = Memory_Store::propose(['text' => 'Something.']);
+
+        $this->assertWPError(Memory_Store::update_fields($id, ['text' => 'x', 'severity' => 'block']));
+        $this->assertWPError(Memory_Store::update_fields(0, ['text' => 'x']));
+    }
+
+    /** Corrupted meta must degrade to the safe defaults, never to a rule. */
+    public function test_unknown_stored_kind_and_severity_degrade_to_defaults(): void
+    {
+        $id = Memory_Store::propose(['text' => 'Something.']);
+        update_post_meta($id, Memory_Store::META_KIND, 'vibes');
+        update_post_meta($id, Memory_Store::META_SEVERITY, 'nuke');
+
+        $entry = Memory_Store::get($id);
+
+        $this->assertSame('fact', $entry['kind']);
+        $this->assertSame('note', $entry['severity']);
+    }
+
+    public function test_block_rules_are_memoized_until_flushed(): void
+    {
+        $id = Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+        Memory_Store::approve($id);
+        $this->assertCount(1, Memory_Store::block_rules());
+
+        // Bypass the store entirely, exactly as a direct DB write would.
+        wp_update_post(['ID' => $id, 'post_status' => 'draft']);
+        Memory_Store::flush_rules_cache();
+
+        $this->assertSame([], Memory_Store::block_rules());
+    }
+
+    public function test_a_post_status_transition_drops_the_memo(): void
+    {
+        $id = Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+        Memory_Store::approve($id);
+        $this->assertCount(1, Memory_Store::block_rules());
+
+        // The wp-admin publish/unpublish path never calls Memory_Store; the
+        // transition listener wired in Plugin::register_builder_runtime_hooks
+        // is what keeps the memo honest.
+        wp_update_post(['ID' => $id, 'post_status' => 'pending']);
+
+        $this->assertSame([], Memory_Store::block_rules());
+    }
+
+    public function test_deleting_an_entry_drops_the_memo(): void
+    {
+        $id = Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+        Memory_Store::approve($id);
+        $this->assertCount(1, Memory_Store::block_rules());
+
+        wp_delete_post($id, true);
+
+        $this->assertSame([], Memory_Store::block_rules());
+    }
+
+    public function test_ensure_post_type_is_idempotent(): void
+    {
+        Memory_Store::ensure_post_type();
+        Memory_Store::ensure_post_type();
+
+        $this->assertTrue(post_type_exists(Memory_Store::POST_TYPE));
+    }
+
+    /**
+     * The registration itself: private, out of REST, editable in wp-admin so
+     * approval is the ordinary publish flow, and every capability raised to
+     * manage_options because publishing an entry can silence a guardrail or
+     * broadcast text to every connecting agent.
+     */
+    public function test_ensure_post_type_registers_a_private_admin_only_type(): void
+    {
+        unregister_post_type(Memory_Store::POST_TYPE);
+        $this->assertFalse(post_type_exists(Memory_Store::POST_TYPE));
+
+        Memory_Store::ensure_post_type();
+
+        $object = get_post_type_object(Memory_Store::POST_TYPE);
+        $this->assertFalse($object->public);
+        $this->assertFalse($object->show_in_rest);
+        $this->assertTrue($object->show_ui);
+        $this->assertFalse($object->show_in_menu);
+        $this->assertSame('manage_options', $object->cap->publish_posts);
+        $this->assertSame('manage_options', $object->cap->edit_posts);
+        $this->assertSame('Agent Memory', $object->labels->name);
+    }
+
+    /**
+     * block_rules() runs inside every non-read-only permission check, so on a
+     * build where the memory group is off it must cost nothing AND must not
+     * register the post type as a side effect of being asked.
+     */
+    public function test_block_rules_short_circuits_when_the_post_type_is_absent(): void
+    {
+        $id = Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+        Memory_Store::approve($id);
+
+        unregister_post_type(Memory_Store::POST_TYPE);
+        Memory_Store::flush_rules_cache();
+
+        $this->assertSame([], Memory_Store::block_rules());
+        $this->assertFalse(post_type_exists(Memory_Store::POST_TYPE));
+    }
+
+    public function test_the_cache_listeners_ignore_posts_of_other_types(): void
+    {
+        $id = Memory_Store::propose([
+            'text'     => 'Never touch the homepage.',
+            'severity' => 'block',
+            'targets'  => ['post_id:99'],
+        ]);
+        Memory_Store::approve($id);
+        $this->assertCount(1, Memory_Store::block_rules());
+
+        // An unrelated post's transition and deletion must not churn the memo.
+        $other = self::factory()->post->create();
+        wp_update_post(['ID' => $other, 'post_status' => 'draft']);
+        wp_delete_post($other, true);
+        Memory_Store::flush_rules_cache_on_transition('publish', 'draft', null);
+        Memory_Store::flush_rules_cache_on_delete($other);
+
+        $this->assertCount(1, Memory_Store::block_rules());
+    }
+}

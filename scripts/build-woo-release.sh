@@ -38,7 +38,15 @@ rm -rf \
   "$STAGE/src/Tools/BlockBuilder" \
   "$STAGE/src/Tools/Cloud" \
   "$STAGE/src/Cloud" \
+  "$STAGE/src/Tools/Memory" \
   "$STAGE/src/Integrations"
+
+# NOTE: src/Memory and src/Admin/Memory_Page.php deliberately STAY. The three
+# agent-facing memory tools are dropped with the group above, but published
+# guardrails are enforced in Registrar::is_permitted() on every build, and the
+# handshake reads the approved entries; those call sites are unconditional, so
+# the store must ship. With the group off the post type is never registered
+# and Memory_Store::block_rules() short-circuits to an empty rule set.
 
 # Guarded-execution: the guards stay (Governance\Opt_In_Gates references
 # them), the runners and their call sites do not.

@@ -64,6 +64,32 @@ class FlavorTest extends \WP_UnitTestCase
         // Breadth kept out of the small wp.org build.
         $this->assertNotContains('wpmcp/call-rest', $names);
         $this->assertNotContains('wpmcp/cloud-connect', $names);
+
+        // Agent memory tools: pruned with the group. Note that ENFORCEMENT of
+        // published guardrails is not a tool and is not pruned; it lives in
+        // Registrar::is_permitted() on every build.
+        $this->assertNotContains('wpmcp/memory-recall', $names);
+        $this->assertNotContains('wpmcp/memory-propose', $names);
+        $this->assertNotContains('wpmcp/memory-save-summary', $names);
+    }
+
+    public function test_memory_runtime_hooks_follow_the_flavor(): void
+    {
+        $cpt        = [\WPMCP\Memory\Memory_Store::class, 'ensure_post_type'];
+        $transition = [\WPMCP\Memory\Memory_Store::class, 'flush_rules_cache_on_transition'];
+
+        remove_action('init', $cpt, 5);
+        remove_action('transition_post_status', $transition);
+
+        Plugin::set_flavor_for_tests('woocommerce');
+        Plugin::instance()->register_builder_runtime_hooks();
+        $this->assertFalse(has_action('init', $cpt));
+        $this->assertFalse(has_action('transition_post_status', $transition));
+
+        Plugin::set_flavor_for_tests(null);
+        Plugin::instance()->register_builder_runtime_hooks();
+        $this->assertSame(5, has_action('init', $cpt));
+        $this->assertSame(10, has_action('transition_post_status', $transition));
     }
 
     public function test_woocommerce_flavor_is_a_strict_subset_of_full(): void

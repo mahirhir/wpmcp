@@ -14,7 +14,10 @@ if (! defined('ABSPATH')) {
  * outcome, not mutations, and has no rollback semantics.
  *
  * Each entry is { ability (string), identity (string, 'none' when no
- * identity is active), allowed (bool), timestamp (int) }.
+ * identity is active), allowed (bool), timestamp (int), reason (string,
+ * empty unless a specific rule produced the outcome, e.g.
+ * "memory-block:42", the id of the published project-memory entry that
+ * denied the call, issue #131) }.
  *
  * The log is capped at CAP entries (500): once full, the oldest entry is
  * dropped for every new one recorded, so a busy site's option never grows
@@ -43,8 +46,15 @@ class Governance_Audit_Log
         return self::$clock_override ?? time();
     }
 
-    /** Append a new entry, evicting the oldest one if the log is at capacity. */
-    public static function record(string $ability, string $identity, bool $allowed): void
+    /**
+     * Append a new entry, evicting the oldest one if the log is at capacity.
+     *
+     * $reason is an optional machine-readable marker for WHY a decision came
+     * out the way it did, for the cases where the ability name alone does not
+     * say. It defaults to '' so every pre-existing call site keeps recording
+     * exactly the entry it always did.
+     */
+    public static function record(string $ability, string $identity, bool $allowed, string $reason = ''): void
     {
         $entries = self::load();
 
@@ -53,6 +63,7 @@ class Governance_Audit_Log
             'identity'  => $identity,
             'allowed'   => $allowed,
             'timestamp' => self::now(),
+            'reason'    => $reason,
         ];
 
         if (count($entries) > self::CAP) {

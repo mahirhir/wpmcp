@@ -5,6 +5,7 @@ namespace WPMCP\MCP;
 use WPMCP\Governance\Governance;
 use WPMCP\Governance\Governance_Audit_Log;
 use WPMCP\Identity\Identity_Context;
+use WPMCP\Memory\Memory_Guard;
 use WPMCP\Pro\Gate;
 use WPMCP\RateLimit\Rate_Limiter;
 
@@ -48,7 +49,11 @@ class Registrar
                 'category'            => 'wpmcp',
                 'input_schema'        => $a->input_schema,
                 'execute_callback'    => $this->throttled($a),
-                'permission_callback' => fn () => $this->is_permitted($a),
+                // The Abilities API hands the invocation input to the
+                // permission callback (WP_Ability::check_permissions($input)),
+                // which is what lets a project-memory rule targeting a post id
+                // or post type be decided here rather than inside each tool.
+                'permission_callback' => fn ($input = null) => $this->is_permitted($a, is_array($input) ? $input : []),
             ]);
         }
     }
@@ -60,14 +65,37 @@ class Registrar
      * Abilities API runs this before every execution, so a license that
      * lapses after registration cannot keep a pro tool usable. The
      * decision is audited exactly as before.
+     *
+     * Project-memory guardrails (issue #131) are enforced here too, and
+     * deliberately at this exact spot: this method is the one gate every
+     * ability passes through, so a published severity=block memory entry
+     * denies uniformly across the whole surface, including abilities written
+     * after the rule was created. The check runs LAST and can only narrow,
+     * it never turns a denial into an allow, and a memory denial records the
+     * blocking entry id in the governance audit log.
+     *
+     * @param array<string, mixed> $input The invocation arguments, when the
+     *                                    caller has them; matching for
+     *                                    post_id/post_type targets needs
+     *                                    them, tool targets do not.
      */
-    public function is_permitted(Ability $a): bool
+    public function is_permitted(Ability $a, array $input = []): bool
     {
         $allowed = ('pro' !== $a->tier || Gate::is_pro())
             && current_user_can($a->capability)
             && Governance::is_ability_enabled($a)
             && Governance::is_within_identity_scope($a);
-        $this->record_audit($a, $allowed);
+
+        $reason = '';
+        if ($allowed) {
+            $rule = Memory_Guard::blocking_rule($a, $input);
+            if (null !== $rule) {
+                $allowed = false;
+                $reason  = 'memory-block:' . (int) $rule['id'];
+            }
+        }
+
+        $this->record_audit($a, $allowed, $reason);
         return $allowed;
     }
 
@@ -108,11 +136,11 @@ class Registrar
      * error; the allow/deny decision itself is always returned regardless
      * of whether this succeeds.
      */
-    private function record_audit(Ability $a, bool $allowed): void
+    private function record_audit(Ability $a, bool $allowed, string $reason = ''): void
     {
         try {
             $identity = Identity_Context::current() ?? 'none';
-            Governance_Audit_Log::record($a->name, $identity, $allowed);
+            Governance_Audit_Log::record($a->name, $identity, $allowed, $reason);
         } catch (\Throwable $e) {
             // Auditing must never break the permission check it is observing.
         }
