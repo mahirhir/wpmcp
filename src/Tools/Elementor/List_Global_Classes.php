@@ -7,40 +7,35 @@ if (! defined('ABSPATH')) {
 }
 
 /**
- * List the Elementor global CSS classes stored on the active kit
- * (`_elementor_global_classes` meta: an { items, order } structure). Returns
- * the classes in stored order, or an empty list when the feature has not been
- * used. Read-only.
+ * List the Elementor global CSS classes of the active kit, in stored order
+ * (empty when the feature has not been used).
+ *
+ * Reads through Global_Classes_Store, so it reports the same set the write
+ * tools operate on across Elementor's 4.2 storage change (classes moved from
+ * the kit's `_elementor_global_classes` meta into their own post type), with
+ * the legacy kit meta still read as a fallback. The returned `state_hash` is
+ * the optimistic lock every global class write requires as expected_hash.
+ * Read-only.
  */
 class List_Global_Classes
 {
     public function handle(array $args)
     {
-        $kit_id = Elementor_Kit_Data::active_kit_id();
-        if ($kit_id <= 0) {
-            return new \WP_Error('kit_not_found', 'No active Elementor kit was found.');
+        $state = Global_Classes_Store::read();
+        if (is_wp_error($state)) {
+            return $state;
         }
-
-        $store = get_post_meta($kit_id, '_elementor_global_classes', true);
-        $items = is_array($store) && is_array($store['items'] ?? null) ? $store['items'] : [];
-        $order = is_array($store['order'] ?? null) ? $store['order'] : array_keys($items);
 
         $classes = [];
-        foreach ($order as $id) {
-            if (isset($items[$id]) && is_array($items[$id])) {
-                $classes[] = $items[$id];
-            }
-        }
-        // Include any item missing from the order array, preserving coverage.
-        foreach ($items as $id => $item) {
-            if (! in_array($id, $order, true) && is_array($item)) {
-                $classes[] = $item;
-            }
+        foreach ($state['order'] as $id) {
+            $classes[] = $state['items'][$id];
         }
 
         return [
-            'kit_id'  => $kit_id,
-            'classes' => $classes,
+            'kit_id'     => $state['kit_id'],
+            'classes'    => $classes,
+            'order'      => $state['order'],
+            'state_hash' => Global_Classes_Store::state_hash($state['items'], $state['order']),
         ];
     }
 }
