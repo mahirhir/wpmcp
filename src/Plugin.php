@@ -447,7 +447,7 @@ final class Plugin
             __('wpmcp: Audit Log', 'wpmcp'),
             __('Audit Log', 'wpmcp'),
             'manage_options',
-            'wpmcp-audit-log',
+            Audit_Log_Page::SLUG,
             [new Audit_Log_Page(), 'render']
         );
 

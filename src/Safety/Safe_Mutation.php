@@ -39,6 +39,10 @@ class Safe_Mutation
             $context['tool_name'],
             hash('sha256', wp_json_encode($context['args'] ?? []))
         );
+        // Noted only now that the snapshot is persisted: observers wrapping
+        // the call (MCP\Request_Log rows, issue #134) link to this id as an
+        // undo point, so it must never be advertised before it exists.
+        Operation_Context::note($operation_id);
         Snapshot_Store::prune(Gate::history_limit());
         $result = $mutation();
         if ($verify && ! $verify($result)) {
