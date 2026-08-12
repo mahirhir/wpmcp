@@ -34,7 +34,41 @@ class Snapshot
         if ('db_rows' === $object_type) {
             return self::capture_db_rows((string) $object_id);
         }
+        if ('redirect' === $object_type) {
+            return self::capture_redirect((string) $object_id);
+        }
         return self::capture_post($object_id);
+    }
+
+    /**
+     * Capture a managed redirect (issue #128), keyed by its SOURCE PATH
+     * rather than its row id, exactly like an option is keyed by its name.
+     *
+     * The source path is the redirect's natural key (it is the UNIQUE column
+     * the front-end handler looks requests up by) and, unlike the
+     * auto-increment id, it is known BEFORE the write. That is what lets
+     * create-redirect run through Safe_Mutation like every other write
+     * instead of recording an after-the-fact "I created this" row: the
+     * capture is simply "no redirect owned this path yet", and the undo is to
+     * delete whatever now does.
+     *
+     * The whole row is captured, id included, so restoring a deleted
+     * redirect resurrects the same row rather than a copy with a new id.
+     */
+    private static function capture_redirect(string $source_path): array
+    {
+        $source = \WPMCP\Tools\Redirects\Redirect_Store::normalize_path($source_path);
+        $row    = \WPMCP\Tools\Redirects\Redirect_Store::find_by_source($source);
+
+        return [
+            'object_type' => 'redirect',
+            'object_id'   => $source,
+            'data'        => [
+                'source_path' => $source,
+                'existed'     => null !== $row,
+                'row'         => $row,
+            ],
+        ];
     }
 
     /**

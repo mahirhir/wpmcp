@@ -193,12 +193,19 @@ class Connection_Page
             return null;
         }
 
+        // readfile() is an error under WordPress.WP.AlternativeFunctions;
+        // file_get_contents() is one of the three names the Plugin Check
+        // review ruleset excludes from it. The bundle is a few kilobytes of
+        // generated JSON, so reading it into memory costs nothing.
+        $bundle = (string) file_get_contents($path);
+        wp_delete_file($path);
+
         nocache_headers();
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename="wpmcp.mcpb"');
-        header('Content-Length: ' . (string) filesize($path));
-        readfile($path);
-        unlink($path);
+        header('Content-Length: ' . (string) strlen($bundle));
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- binary .mcpb body sent as application/octet-stream; any escaper would corrupt it.
+        echo $bundle;
         exit;
     }
 
@@ -252,6 +259,16 @@ class Connection_Page
             <?php if (isset($result['self_test'])) : ?>
                 <div class="notice notice-<?php echo $result['self_test']['ok'] ? 'success' : 'error'; ?>">
                     <p><?php echo esc_html($result['self_test']['message']); ?></p>
+                    <?php if (! empty($result['self_test']['checks'])) : ?>
+                        <ul style="margin-left: 1.5em; list-style: disc;">
+                            <?php foreach ($result['self_test']['checks'] as $check) : ?>
+                                <li>
+                                    <strong><?php echo esc_html(($check['ok'] ? "\u{2713} " : "\u{2717} ") . $check['label']); ?></strong>
+                                    <br><span class="description"><?php echo esc_html($check['detail']); ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
 

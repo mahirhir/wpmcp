@@ -82,8 +82,16 @@ class Client_Registration
 
         $client_name = (string) ($params['client_name'] ?? '');
 
+        // Opportunistic, throttled housekeeping (issue #133): DCR is the
+        // one endpoint whose whole job is to add rows, so it is the right
+        // place to also pay off expired tokens/codes and orphan clients
+        // before the cap check below can be tripped by dead bookkeeping.
+        Oauth_Gc::run_throttled();
+
         try {
-            $created = Client_Store::create([$client_name], $redirect_uris);
+            // $client_key is threaded through so the dedup fingerprint is
+            // bound to the registering caller; see Client_Store::create().
+            $created = Client_Store::create([$client_name], $redirect_uris, $client_key);
         } catch (\RuntimeException $e) {
             return self::deny('client_cap_reached', 'The maximum number of registered OAuth clients has been reached.');
         }

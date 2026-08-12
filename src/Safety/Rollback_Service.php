@@ -395,6 +395,11 @@ class Rollback_Service
             return;
         }
 
+        if ('redirect' === $snapshot['object_type']) {
+            self::apply_redirect_snapshot($snapshot);
+            return;
+        }
+
         if ('page_build' === $snapshot['object_type']) {
             self::apply_page_build_snapshot($snapshot);
             return;
@@ -402,6 +407,11 @@ class Rollback_Service
 
         if ('media_import' === $snapshot['object_type']) {
             self::apply_media_import_snapshot($snapshot);
+            return;
+        }
+
+        if ('elementor_global_classes' === $snapshot['object_type']) {
+            self::apply_elementor_global_classes_snapshot($snapshot);
             return;
         }
 
@@ -644,6 +654,116 @@ class Rollback_Service
         }
 
         wp_delete_attachment($media_id, true);
+    }
+
+    /**
+     * Undo a managed-redirect write (issue #128; snapshot shape documented at
+     * Snapshot::capture_redirect()).
+     *
+     * Like the db_rows path, THE ROLLBACK ITSELF PERFORMS A RAW TABLE WRITE,
+     * so it enforces the write tools' own gate here rather than inheriting
+     * the rollback tools' deliberately lower edit_posts gate. Without this,
+     * an edit_posts caller could add or remove site-wide redirects by
+     * replaying an administrator's operation through rollback-operation.
+     *
+     * Two prior states are possible, and they are exactly the two an option
+     * snapshot has:
+     *  - the path already had a redirect: put the captured row back. If the
+     *    row still exists it is overwritten in place (which is what restores
+     *    a source_path that update-redirect renamed, since the id is
+     *    unchanged); if it is gone, the full captured row is reinserted
+     *    INCLUDING its original id, so a deleted redirect comes back as the
+     *    same row rather than a copy.
+     *  - the path had no redirect: the write introduced one, so whatever now
+     *    owns that path is deleted.
+     * A row that has since been reclaimed by a different source path is
+     * reported as a warning, not silently overwritten, matching how every
+     * other restore path treats a reclaimed identity.
+     */
+    private static function apply_redirect_snapshot(array $snapshot): void
+    {
+        if (! current_user_can('manage_options')) {
+            throw new Mutation_Failed('Rollback refused: restoring a managed redirect requires the manage_options capability.');
+        }
+
+        $data   = (array) ($snapshot['data'] ?? []);
+        $source = (string) ($data['source_path'] ?? '');
+        if ('' === $source) {
+            return;
+        }
+
+        if (empty($data['existed'])) {
+            \WPMCP\Tools\Redirects\Redirect_Store::delete_by_source($source);
+            return;
+        }
+
+        $row = (array) ($data['row'] ?? []);
+        $id  = (int) ($row['id'] ?? 0);
+        if ($id <= 0) {
+            return;
+        }
+
+        $current = \WPMCP\Tools\Redirects\Redirect_Store::get($id);
+        if (null === $current) {
+            \WPMCP\Tools\Redirects\Redirect_Store::insert_raw($row);
+            return;
+        }
+
+        // Restoring the captured source_path onto this id would collide with
+        // the UNIQUE key if some other row has taken that path in the
+        // meantime. Clear the squatter first: it is either the row this
+        // operation created (create-redirect on a path that was later
+        // re-pointed) or a third-party duplicate that cannot coexist with the
+        // state we promised to restore.
+        $holder = \WPMCP\Tools\Redirects\Redirect_Store::find_by_source($source);
+        if (null !== $holder && $holder['id'] !== $id) {
+            self::warn(sprintf(
+                'Redirect source "%s" had been taken by redirect #%d since the operation; it was removed so the captured redirect could be restored.',
+                $source,
+                $holder['id']
+            ));
+            \WPMCP\Tools\Redirects\Redirect_Store::delete($holder['id']);
+        }
+
+        \WPMCP\Tools\Redirects\Redirect_Store::overwrite($id, $row);
+    }
+
+    /**
+     * Undo an Elementor v4 global classes write (issue #132: create / update /
+     * delete / reorder a Class Manager entry).
+     *
+     * Unlike every other Elementor edit, the class set is not a single post:
+     * since Elementor 4.2 each class is its own post while order and labels
+     * live on the kit, so the snapshot captures the WHOLE prior class set
+     * (items + order) and the undo replays it through Elementor's repository,
+     * which computes the create/update/delete diff. That restores an edited
+     * class, resurrects a deleted one and puts the order back in a single
+     * step.
+     *
+     * The repository call is made here rather than through the Elementor tool
+     * layer on purpose: the safety layer must be able to restore without
+     * depending on the tool that wrote. If Elementor is no longer present the
+     * snapshot cannot be applied, which is warned about rather than silently
+     * treated as a successful rollback.
+     */
+    private static function apply_elementor_global_classes_snapshot(array $snapshot): void
+    {
+        $data       = (array) ($snapshot['data'] ?? []);
+        $repository = '\\Elementor\\Modules\\GlobalClasses\\Global_Classes_Repository';
+
+        if (! class_exists($repository) || ! is_callable([$repository, 'make'])) {
+            self::warn('Elementor global classes cannot be restored: Elementor 4.0+ is no longer available on this site.');
+            return;
+        }
+
+        $items = is_array($data['items'] ?? null) ? $data['items'] : [];
+        $order = is_array($data['order'] ?? null) ? array_values($data['order']) : [];
+
+        try {
+            call_user_func([$repository, 'make'])->put($items, $order);
+        } catch (\Throwable $e) {
+            self::warn('Elementor refused the global classes restore: ' . $e->getMessage());
+        }
     }
 
     /** Human-readable "pk=value" description of a row's primary-key values, for warnings and errors. */

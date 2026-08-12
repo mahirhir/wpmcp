@@ -20,6 +20,15 @@ class Database_Guard
     public const AUDIT_OPTION = 'wpmcp_db_write_audit_log';
     public const AUDIT_MAX = 100;
 
+    /** Placeholder written over secret values in query results. */
+    public const SECRET_MASK = '[REDACTED]';
+
+    /** users-table columns that are always masked when user-table reads are opted in. */
+    public const SECRET_USER_COLUMNS = ['user_pass', 'user_activation_key'];
+
+    /** usermeta meta_keys whose meta_value is always masked when user-table reads are opted in. */
+    public const SECRET_META_KEYS = ['session_tokens'];
+
     /** Per-request cache of the detected NO_BACKSLASH_ESCAPES state. Null = not yet detected. */
     private static ?bool $no_backslash_escapes_cache = null;
 
@@ -72,9 +81,19 @@ class Database_Guard
      * explicitly; otherwise resolves it via no_backslash_escapes_active(),
      * which may query $wpdb once per request. Does NOT special-case /*!
      * executable comments; the caller rejects those before normalizing.
+     *
+     * With $preserve_backtick_identifiers, backtick-quoted identifiers are
+     * emitted as their space-delimited CONTENTS instead of the blank ``
+     * placeholder. Keyword scanning must never use this (a keyword could
+     * then hide inside a quoted identifier); it exists for table-NAME
+     * scanning (sql_mentions_user_tables), where blanking identifiers would
+     * be the bypass: `wp_users` names exactly the same table as wp_users.
      */
-    public static function normalize_sql(string $sql, ?bool $no_backslash_escapes = null): string
-    {
+    public static function normalize_sql(
+        string $sql,
+        ?bool $no_backslash_escapes = null,
+        bool $preserve_backtick_identifiers = false
+    ): string {
         $no_backslash_escapes ??= self::no_backslash_escapes_active();
 
         $out = '';
@@ -123,11 +142,15 @@ class Database_Guard
 
             if ('`' === $c) {
                 $i++;
+                $identifier = '';
                 while ($i < $len && '`' !== $sql[ $i ]) {
+                    $identifier .= $sql[ $i ];
                     $i++;
                 }
                 $i++;
-                $out .= '``';
+                // Space-delimit preserved contents so `wp_users` cannot fuse
+                // with adjacent text into a longer, non-matching token.
+                $out .= $preserve_backtick_identifiers ? ' ' . $identifier . ' ' : '``';
                 continue;
             }
 
@@ -228,6 +251,127 @@ class Database_Guard
         }
 
         return true;
+    }
+
+    /**
+     * Whether $sql references the users or usermeta table as a real
+     * identifier token. Matching runs against normalize_sql() output, where
+     * string literals and comments are already blanked, so a query that
+     * merely MENTIONS the table name inside a string (e.g. searching
+     * post_content for 'wp_users') is never a false positive. Backtick
+     * identifier contents are preserved (see normalize_sql) because
+     * `wp_users` is the same table as wp_users and must not evade the scan.
+     *
+     * Like the stacked-statement pre-scan in is_read_only_sql(), the SQL is
+     * normalized under BOTH escape assumptions and a hit under either counts:
+     * a literal-boundary desync between the guard and the live server must
+     * not be able to hide a user-table read inside assumed string content.
+     *
+     * Identifier chars around the match are excluded on both sides, so
+     * lookalike tables (wp_users_backup, my_wp_usermeta) do not match while
+     * schema-qualified (db.wp_users) and aliased (wp_users u) forms do.
+     */
+    public static function sql_mentions_user_tables(string $sql): bool
+    {
+        global $wpdb;
+
+        $names = array_unique([ (string) $wpdb->users, (string) $wpdb->usermeta ]);
+        $names = array_filter($names, static fn ($name) => '' !== $name);
+        if ([] === $names) {
+            return false;
+        }
+
+        $quoted  = array_map(static fn ($name) => preg_quote($name, '/'), $names);
+        $pattern = '/(?<![0-9a-z_$])(' . implode('|', $quoted) . ')(?![0-9a-z_$])/i';
+
+        foreach ([false, true] as $assume_no_backslash_escapes) {
+            $probe = self::normalize_sql($sql, $assume_no_backslash_escapes, true);
+            if (preg_match($pattern, $probe)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Read-path counterpart of is_protected(): decide whether a validated
+     * read-only query may touch the users/usermeta tables. Those tables hold
+     * password hashes (user_pass), activation keys, and login session tokens
+     * (usermeta session_tokens); an agent has no business reading any of
+     * them through the flexible SQL tool, and the dedicated user tools
+     * (list-users, get-user) already expose the safe profile fields.
+     *
+     * Returns false when the query does not touch the user tables, true when
+     * it does AND the site has opted in via the
+     * wpmcp_db_allow_user_table_reads filter, or a WP_Error
+     * (users_table_read_blocked) otherwise. Callers use the true return to
+     * apply result masking (see mask_user_secrets()).
+     *
+     * @return bool|\WP_Error
+     */
+    public static function guard_user_table_read(string $sql)
+    {
+        if (! self::sql_mentions_user_tables($sql)) {
+            return false;
+        }
+
+        /**
+         * Opt in to reads of the users/usermeta tables through the query
+         * tool. Even when enabled, secret columns are masked in results
+         * unless wpmcp_db_mask_user_secrets is also filtered to false.
+         *
+         * @param bool   $allow Default false.
+         * @param string $sql   The full query being validated.
+         */
+        if (apply_filters('wpmcp_db_allow_user_table_reads', false, $sql)) {
+            return true;
+        }
+
+        return new \WP_Error(
+            'users_table_read_blocked',
+            'Reads of the users/usermeta tables are blocked: they contain password hashes, '
+            . 'activation keys, and session tokens. Use the list-users or get-user tools for '
+            . 'safe user data, or opt in via the wpmcp_db_allow_user_table_reads filter.'
+        );
+    }
+
+    /**
+     * Best-effort defense in depth for opted-in user-table reads: overwrite
+     * secret values in result rows with SECRET_MASK. Masks the users-table
+     * secret columns (SECRET_USER_COLUMNS) wherever they appear as result
+     * keys, and meta_value on any row whose meta_key is a secret meta key
+     * (SECRET_META_KEYS, extendable via the wpmcp_db_masked_meta_keys
+     * filter). Column aliasing (SELECT user_pass AS p) can evade this, which
+     * is why it is layered BEHIND the opt-in filter rather than being the
+     * primary guard: the default posture is a flat refusal.
+     */
+    public static function mask_user_secrets(array $rows): array
+    {
+        $meta_keys = (array) apply_filters('wpmcp_db_masked_meta_keys', self::SECRET_META_KEYS);
+        $meta_keys = array_map('strtolower', array_map('strval', $meta_keys));
+
+        foreach ($rows as $index => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            foreach (self::SECRET_USER_COLUMNS as $column) {
+                if (array_key_exists($column, $row)) {
+                    $rows[ $index ][ $column ] = self::SECRET_MASK;
+                }
+            }
+
+            if (
+                isset($row['meta_key'])
+                && in_array(strtolower((string) $row['meta_key']), $meta_keys, true)
+                && array_key_exists('meta_value', $row)
+            ) {
+                $rows[ $index ]['meta_value'] = self::SECRET_MASK;
+            }
+        }
+
+        return $rows;
     }
 
     /**

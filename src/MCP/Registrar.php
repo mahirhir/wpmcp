@@ -8,6 +8,7 @@ use WPMCP\Identity\Identity_Context;
 use WPMCP\Memory\Memory_Guard;
 use WPMCP\Pro\Gate;
 use WPMCP\RateLimit\Rate_Limiter;
+use WPMCP\Safety\Operation_Context;
 
 if (! defined('ABSPATH')) {
     exit;
@@ -148,19 +149,26 @@ class Registrar
 
     /**
      * Wraps an ability's handler with a rate-limit check that runs BEFORE the
-     * real tool. The permission_callback contract (capability + Governance)
-     * is untouched; this only sits in front of execute_callback, so a client
-     * over budget never reaches the tool at all. The budget is a single
-     * counter per client shared across every ability (Rate_Limiter::check()
-     * keys only on client identity, not on ability name), matching "global
-     * per-client counter across all abilities".
+     * real tool, and records the outcome of every call that gets past it. The
+     * permission_callback contract (capability + Governance) is untouched;
+     * this only sits in front of execute_callback, so a client over budget
+     * never reaches the tool at all. The budget is a single counter per client
+     * shared across every ability (Rate_Limiter::check() keys only on client
+     * identity, not on ability name), matching "global per-client counter
+     * across all abilities".
+     *
+     * Because every ability passes through this single choke point, the
+     * outcome log (issue #134) covers reads as well as writes with no
+     * per-tool changes: a throttled call, a WP_Error return, a thrown
+     * exception and a success all leave exactly one row.
      */
     private function throttled(Ability $a): callable
     {
         return function (...$args) use ($a) {
-            $status = Rate_Limiter::check(Rate_Limiter::client_key());
+            $client = Rate_Limiter::client_key();
+            $status = Rate_Limiter::check($client);
             if (! $status['allowed']) {
-                return new \WP_Error(
+                $error = new \WP_Error(
                     'wpmcp_rate_limited',
                     sprintf(
                         'Rate limit exceeded for "%s". Retry after %d second(s).',
@@ -172,8 +180,95 @@ class Registrar
                         'remaining'   => $status['remaining'],
                     ]
                 );
+                $this->record_outcome($a, $client, $error, 0, $args, null);
+                return $error;
             }
-            return ($a->handler)(...$args);
+
+            // Bracket the call rather than resetting the context, so a tool
+            // that dispatches another tool cannot steal this call's undo point.
+            $mark    = Operation_Context::mark();
+            $started = microtime(true);
+            try {
+                $result = ($a->handler)(...$args);
+            } catch (\Throwable $e) {
+                // A failed write still leaves a snapshot behind, so the row
+                // keeps its undo point; the exception itself is re-thrown
+                // untouched.
+                $this->record_outcome(
+                    $a,
+                    $client,
+                    $e,
+                    self::elapsed_ms($started),
+                    $args,
+                    Operation_Context::since($mark)
+                );
+                throw $e;
+            }
+
+            $this->record_outcome(
+                $a,
+                $client,
+                $result,
+                self::elapsed_ms($started),
+                $args,
+                Operation_Context::since($mark)
+            );
+            return $result;
         };
+    }
+
+    private static function elapsed_ms(float $started): int
+    {
+        return (int) round((microtime(true) - $started) * 1000);
+    }
+
+    /**
+     * Append one Request_Log row for a finished (or throttled) call. Wrapped
+     * in a try/catch for the same reason as record_audit(): observability must
+     * never turn a working tool call into a failure.
+     *
+     * @param mixed        $outcome The handler's return value, or the Throwable it threw.
+     * @param array<mixed> $args    Positional handler arguments, as passed by the Abilities API.
+     */
+    private function record_outcome(
+        Ability $a,
+        string $client,
+        $outcome,
+        int $duration_ms,
+        array $args,
+        ?string $operation_id
+    ): void {
+        try {
+            $entry = [
+                'tool'        => $a->name,
+                'client'      => $client,
+                'ok'          => true,
+                'duration_ms' => $duration_ms,
+                'args'        => isset($args[0]) && is_array($args[0]) ? $args[0] : [],
+            ];
+
+            if ($outcome instanceof \Throwable) {
+                $parts          = explode('\\', get_class($outcome));
+                $entry['ok']            = false;
+                $entry['error_code']    = 'exception:' . end($parts);
+                $entry['error_message'] = $outcome->getMessage();
+            } elseif (is_wp_error($outcome)) {
+                $entry['ok']            = false;
+                $entry['error_code']    = (string) $outcome->get_error_code();
+                $entry['error_message'] = (string) $outcome->get_error_message();
+            }
+
+            // Tools that report their own operation_id (the Safe_Mutation
+            // return shape) are honored as a fallback for any write that does
+            // not route through Safe_Mutation itself.
+            if (null === $operation_id && is_array($outcome) && ! empty($outcome['operation_id'])) {
+                $operation_id = (string) $outcome['operation_id'];
+            }
+            $entry['operation_id'] = (string) $operation_id;
+
+            Request_Log::record($entry);
+        } catch (\Throwable $e) {
+            // Logging must never break the call it is observing.
+        }
     }
 }

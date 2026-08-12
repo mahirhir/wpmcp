@@ -8,11 +8,15 @@ if (! defined('ABSPATH')) {
 
 /**
  * Classify which page builder authored a post, by inspecting the same
- * plain-storage markers Detect_Builder, Get_Builder_Content, and
- * Update_Builder_Content read/write directly: postmeta flags and, for
- * Gutenberg vs classic, the post_content itself. No Bricks or Divi plugin
- * class is required to be loaded for this to work, since all of it lives
- * in ordinary WordPress storage.
+ * plain-storage markers the builder read/write handlers in this namespace
+ * use directly: postmeta flags and, for Gutenberg vs classic, the
+ * post_content itself. No Bricks or Divi plugin class is required to be
+ * loaded for this to work, since all of it lives in ordinary WordPress
+ * storage.
+ *
+ * Deliberately names no sibling handler class. The wp.org build sweeps this
+ * namespace by reference and treats a mention in a comment as a reference,
+ * so naming the paid handlers here would keep them in that zip.
  *
  * Checked in priority order: Elementor's `_elementor_edit_mode` flag,
  * Bricks' `_bricks_page_content_2` postmeta, Divi's `_et_pb_use_builder`
