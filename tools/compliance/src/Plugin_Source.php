@@ -27,6 +27,12 @@ final class Plugin_Source
         // of the checkout would report the artifact's findings twice.
         'build',
         'coverage',
+        // Agent worktrees. Each one is a full copy of the repo, so scanning
+        // them reports every finding a dozen times over and exhausts the
+        // default 128M memory limit inside token_get_all(). Untracked, so it
+        // only bites in a working checkout, which is exactly where the engine
+        // gets run by hand.
+        '.claude',
         'tests',
         'tools',
         'bin',
