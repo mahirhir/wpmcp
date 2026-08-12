@@ -181,6 +181,10 @@ use WPMCP\Tools\Elementor\Get_Global_Settings;
 use WPMCP\Tools\Elementor\Update_Global_Colors;
 use WPMCP\Tools\Elementor\Update_Global_Typography;
 use WPMCP\Tools\Elementor\List_Global_Classes;
+use WPMCP\Tools\Brand\List_Brand_Kits;
+use WPMCP\Tools\Brand\Get_Brand_Kit;
+use WPMCP\Tools\Brand\Apply_Brand_Kit;
+use WPMCP\Tools\Brand\Rollback_Brand_Kit;
 use WPMCP\Tools\Elementor\Export_Page;
 use WPMCP\Tools\Elementor\Save_As_Template;
 use WPMCP\Tools\Elementor\Apply_Template;
@@ -4192,6 +4196,108 @@ final class Plugin
         ));
 
         $this->register_elementor_structural_abilities($registrar);
+        $this->register_brand_kit_abilities($registrar);
+    }
+
+    /**
+     * Register the brand-kit tools as pro-tier abilities (issue #75).
+     *
+     * A brand kit is a named design system (four system colors, extra named
+     * swatches, the four system typography tokens, an optional logo
+     * reference) stored as data: bundled presets in Brand_Kit_Store plus
+     * anything a site adds through the `wpmcp_brand_kits` option or filter.
+     * Growing the library therefore never grows the advertised tool surface
+     * — pinned by tests/free/Platform/ToolsListBudgetTest.php.
+     *
+     * apply-brand-kit folds the entire kit into ONE
+     * `_elementor_page_settings` patch handed to Elementor_Kit_Data::write(),
+     * so a whole rebrand is a single snapshot and a single operation_id
+     * rather than one operation per token type; rollback-brand-kit undoes
+     * that operation without the agent needing to have kept the id. The
+     * write is doubly gated: without confirm:true the tool returns the exact
+     * diff and writes nothing, and with it the shared kit guard still
+     * requires a fresh expected_hash.
+     */
+    private function register_brand_kit_abilities(Registrar $registrar): void
+    {
+        $list_brand_kits = new List_Brand_Kits();
+
+        $registrar->register(new Ability(
+            'wpmcp/list-brand-kits',
+            'pro',
+            'List the brand kits available on this site (bundled presets plus any added via the wpmcp_brand_kits option or filter): slug, category, source, the four system colors, distinct font families, logo flag. Filter by category, source (bundled/site) or a search over slug/title/description. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'search'   => [ 'type' => 'string' ],
+                    'category' => [ 'type' => 'string' ],
+                    'source'   => [ 'type' => 'string', 'enum' => [ 'bundled', 'site' ] ],
+                ],
+            ],
+            [$list_brand_kits, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $get_brand_kit = new Get_Brand_Kit();
+
+        $registrar->register(new Ability(
+            'wpmcp/get-brand-kit',
+            'pro',
+            'Return one brand kit\'s full definition in the shape apply-brand-kit writes: system slots as hex, named swatches with their _id, typography already mapped to Elementor typography_* fields. Entries that failed validation are listed in "invalid", which makes the kit unappliable. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'slug' => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'slug' ],
+            ],
+            [$get_brand_kit, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $apply_brand_kit = new Apply_Brand_Kit();
+
+        $registrar->register(new Ability(
+            'wpmcp/apply-brand-kit',
+            'pro',
+            'Apply a brand kit to the active Elementor kit (system colors, named swatches, the four system typography tokens, logo) as ONE snapshotted operation, so the whole rebrand undoes in a single rollback. Without confirm:true nothing is written and the exact per-token diff plus the settings_hash to pass back is returned; with it, expected_hash must still match. A kit with any invalid entry is refused, never partly applied. Undoable via rollback-brand-kit or rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'slug'          => [ 'type' => 'string' ],
+                    'confirm'       => [ 'type' => 'boolean' ],
+                    'expected_hash' => [ 'type' => 'string' ],
+                    'include_logo'  => [ 'type' => 'boolean' ],
+                ],
+                'required'   => [ 'slug' ],
+            ],
+            [$apply_brand_kit, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
+
+        $rollback_brand_kit = new Rollback_Brand_Kit();
+
+        $registrar->register(new Ability(
+            'wpmcp/rollback-brand-kit',
+            'pro',
+            'Undo a brand-kit apply by restoring the single snapshot it took, putting palette, swatches, typography and logo back as they were. Defaults to the most recent apply not already rolled back, so the operation_id need not be remembered; pass operation_id to target a specific apply',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'operation_id' => [ 'type' => 'string' ],
+                ],
+            ],
+            [$rollback_brand_kit, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
     }
 
     /**

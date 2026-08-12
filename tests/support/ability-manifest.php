@@ -15,9 +15,9 @@
  */
 
 return [
-    'total'     => 260,
+    'total'     => 264,
     'free'      => 187,
-    'pro'       => 73,
+    'pro'       => 77,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
         'wpmcp/acf-write' => 'free',
@@ -34,6 +34,7 @@ return [
         'wpmcp/analyze-accessibility' => 'pro',
         'wpmcp/analyze-performance' => 'free',
         'wpmcp/analyze-seo' => 'pro',
+        'wpmcp/apply-brand-kit' => 'pro',
         'wpmcp/apply-template' => 'pro',
         'wpmcp/assign-menu-to-location' => 'free',
         'wpmcp/batch-update' => 'pro',
@@ -100,6 +101,7 @@ return [
         'wpmcp/get-analytics-summary' => 'free',
         'wpmcp/get-backup-status' => 'free',
         'wpmcp/get-block-type' => 'free',
+        'wpmcp/get-brand-kit' => 'pro',
         'wpmcp/get-builder-content' => 'pro',
         'wpmcp/get-cache-status' => 'free',
         'wpmcp/get-comment' => 'free',
@@ -157,6 +159,7 @@ return [
         'wpmcp/list-backup-jobs' => 'free',
         'wpmcp/list-block-control-types' => 'pro',
         'wpmcp/list-block-types' => 'free',
+        'wpmcp/list-brand-kits' => 'pro',
         'wpmcp/list-code-snippets' => 'pro',
         'wpmcp/list-comments' => 'free',
         'wpmcp/list-control-types' => 'pro',
@@ -217,6 +220,7 @@ return [
         'wpmcp/reorder-elements' => 'pro',
         'wpmcp/resize-media' => 'free',
         'wpmcp/restore-revision' => 'free',
+        'wpmcp/rollback-brand-kit' => 'pro',
         'wpmcp/rollback-operation' => 'free',
         'wpmcp/rollback-session' => 'free',
         'wpmcp/run-event' => 'free',
