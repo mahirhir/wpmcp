@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 283,
-    'free'      => 195,
+    'total'     => 285,
+    'free'      => 197,
     'pro'       => 88,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -145,6 +145,7 @@ return [
         'wpmcp/get-seo-status' => 'free',
         'wpmcp/get-settings' => 'free',
         'wpmcp/get-site-context' => 'free',
+        'wpmcp/get-skill' => 'free',
         'wpmcp/get-theme-template' => 'pro',
         'wpmcp/get-tool-schema' => 'free',
         'wpmcp/get-top-pages' => 'free',
@@ -201,6 +202,7 @@ return [
         'wpmcp/list-shortcodes' => 'free',
         'wpmcp/list-sidebar-widgets' => 'free',
         'wpmcp/list-sidebars' => 'free',
+        'wpmcp/list-skills' => 'free',
         'wpmcp/list-tables' => 'free',
         'wpmcp/list-taxonomies' => 'free',
         'wpmcp/list-theme-templates' => 'pro',

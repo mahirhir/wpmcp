@@ -52,6 +52,10 @@ use WPMCP\Admin\Handshake_Settings_Page;
 use WPMCP\Admin\Connection_Page;
 use WPMCP\Admin\Announcements;
 use WPMCP\Admin\Ability_Grid_Page;
+use WPMCP\Admin\Skills_Settings_Page;
+use WPMCP\Skills\Skills_Module;
+use WPMCP\Tools\Skills\Get_Skill;
+use WPMCP\Tools\Skills\List_Skills;
 use WPMCP\Governance\Default_Seeder;
 use WPMCP\Connect\Exposure;
 use WPMCP\MCP\Ability;
@@ -312,7 +316,7 @@ final class Plugin
             'compose', 'woocommerce', 'menu', 'seo', 'linking', 'meta',
             'diagnostics', 'cron', 'maintenance', 'context', 'block',
             'structure', 'export', 'backup', 'analysis', 'connect',
-            'governance',
+            'governance', 'skills',
         ],
     ];
 
@@ -428,6 +432,9 @@ final class Plugin
             // The Settings API registration for the handshake instructions
             // option (sanitize + clamp on every save through options.php).
             add_action('admin_init', [Handshake_Settings_Page::class, 'register_setting']);
+            // Settings API registration for the agent-skills module toggle
+            // (issue #74). Off unregisters list-skills/get-skill entirely.
+            add_action('admin_init', [Skills_Settings_Page::class, 'register_setting']);
             // Master MCP exposure switch (issue #76): narrows through the
             // existing wpmcp_ability_enabled governance filter (off = every
             // ability denies on the next request) and surfaces its state in
@@ -546,6 +553,18 @@ final class Plugin
             'manage_options',
             Ability_Grid_Page::SLUG,
             [new Ability_Grid_Page(), 'render']
+        );
+
+        // Agent skills (issue #74): the toggle on this screen decides whether
+        // list-skills/get-skill are registered at all, i.e. what every
+        // connecting agent is told about how to work on this site.
+        add_submenu_page(
+            'wpmcp',
+            'wpmcp: Agent Skills',
+            'Skills',
+            'manage_options',
+            Skills_Settings_Page::SLUG,
+            [new Skills_Settings_Page(), 'render']
         );
     }
 
@@ -1919,6 +1938,7 @@ final class Plugin
             'block_builder'  => fn () => $this->register_block_builder_abilities($registrar),
             'cloud'          => fn () => $this->register_cloud_abilities($registrar),
             'search'         => fn () => $this->register_search_abilities($registrar),
+            'skills'         => fn () => $this->register_skills_abilities($registrar),
         ];
         foreach ($groups as $group => $register) {
             if ($this->group_enabled($group)) {
@@ -1932,6 +1952,65 @@ final class Plugin
      * builder assets (custom widget + block specs) over a versioned,
      * backend-agnostic REST contract. All PRO, manage_options, domain 'cloud'.
      */
+    /**
+     * Agent skills over MCP (issue #74): list-skills / get-skill, serving the
+     * bundled markdown playbook library plus any site-custom source.
+     *
+     * Both tools are FREE and read-only. Tiering happens per skill document
+     * (`tier: pro` in its frontmatter, enforced in Get_Skill through
+     * Pro\Gate), not at the surface, so a premium skill library can drop into
+     * the same directory layout without changing this registration.
+     *
+     * Skills_Module::is_enabled() is checked HERE rather than in the tools,
+     * so a site that turns the surface off does not merely hide it: the two
+     * abilities are never registered, never reach the Abilities API, and cost
+     * a connecting client zero tokens in tools/list.
+     */
+    private function register_skills_abilities(Registrar $registrar): void
+    {
+        if (! Skills_Module::is_enabled()) {
+            return;
+        }
+
+        $list_skills = new List_Skills();
+        $get_skill   = new Get_Skill();
+
+        $registrar->register(new Ability(
+            'wpmcp/list-skills',
+            'free',
+            'List the agent skills installed on this site: versioned markdown playbooks for common WordPress, Elementor and WooCommerce work (slug, name, one-line description, version, tags). Bodies are not included; call get-skill for one. Skills whose required tools are not registered here are hidden unless include_unavailable is set. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'search'              => [ 'type' => 'string' ],
+                    'tag'                 => [ 'type' => 'string' ],
+                    'include_unavailable' => [ 'type' => 'boolean' ],
+                ],
+            ],
+            [$list_skills, 'handle'],
+            'edit_posts',
+            'skills',
+            'read'
+        ));
+
+        $registrar->register(new Ability(
+            'wpmcp/get-skill',
+            'free',
+            'Load one skill\'s full instructions by slug (from list-skills), returned exactly as written. Unknown slugs return a structured error listing the installed slugs. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'slug' => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'slug' ],
+            ],
+            [$get_skill, 'handle'],
+            'edit_posts',
+            'skills',
+            'read'
+        ));
+    }
+
     private function register_cloud_abilities(Registrar $registrar): void
     {
         $tools = [
