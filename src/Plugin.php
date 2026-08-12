@@ -52,9 +52,11 @@ use WPMCP\Admin\Handshake_Settings_Page;
 use WPMCP\Admin\Connection_Page;
 use WPMCP\Admin\Announcements;
 use WPMCP\Admin\Ability_Grid_Page;
+use WPMCP\Admin\Memory_Page;
 use WPMCP\Admin\Redirect_Suggestion_Controller;
 use WPMCP\Admin\Redirects_Page;
 use WPMCP\Admin\Skills_Settings_Page;
+use WPMCP\Memory\Memory_Store;
 use WPMCP\Skills\Skills_Module;
 use WPMCP\Tools\Skills\Get_Skill;
 use WPMCP\Tools\Skills\List_Skills;
@@ -357,7 +359,8 @@ final class Plugin
     }
 
     /**
-     * Boot-time hook wiring for the data-driven widget/block builders.
+     * Boot-time runtime hook wiring for the flavor-gated feature groups: the
+     * data-driven widget/block builders and agent project memory.
      * Flavor-gated with the matching ability groups: vertical builds prune
      * these classes' files from the zip, so the hooks must not reference
      * them there. Public so tests can exercise the gating directly (boot()
@@ -383,6 +386,22 @@ final class Plugin
         // the indexing cost.
         if ($this->group_enabled('search')) {
             (new Index_Hooks())->register();
+        }
+        // Agent project memory (issue #131): the wpmcp_memory CPT is the
+        // store AND the approval queue, so it is registered here rather than
+        // lazily from the tools. Note this runs even though the three memory
+        // TOOLS are pro: an administrator's published guardrails are enforced
+        // in Registrar::is_permitted() on every tier, and a safety rule must
+        // not stop applying because a license lapsed.
+        if ($this->group_enabled('memory')) {
+            add_action('init', [Memory_Store::class, 'ensure_post_type'], 5);
+            (new Memory_Page())->register_hooks();
+            // The enforced rule set is memoized per request. An administrator
+            // publishing or trashing an entry in wp-admin does not go through
+            // Memory_Store, so drop the memo on the post-status transition and
+            // on deletion instead of trusting every write to route through us.
+            add_action('transition_post_status', [Memory_Store::class, 'flush_rules_cache_on_transition'], 10, 3);
+            add_action('deleted_post', [Memory_Store::class, 'flush_rules_cache_on_delete'], 10, 2);
         }
     }
     public function boot(): void
@@ -526,10 +545,35 @@ final class Plugin
 
     public function register_admin_menu(): void
     {
+        // Pending agent memory proposals (issue #131) are surfaced as the
+        // WordPress count bubble on the top-level menu, so a proposal waiting
+        // for a human decision is visible from any wpmcp screen (and from
+        // anywhere in wp-admin), not only from the memory list table. Vertical
+        // builds that drop the memory group also drop the class, so nothing
+        // here may touch it when the group is off.
+        $memory     = $this->group_enabled('memory');
+        $pending    = $memory ? Memory_Page::pending_count() : 0;
+        $menu_title = $memory ? Memory_Page::badged('wpmcp', $pending) : 'wpmcp';
+
         // The history page views (and its Restore button rolls back) ALL
         // users' site-wide agent mutations, so it is gated at manage_options,
         // matching Restore_Controller::handle()'s ajax capability check.
         add_menu_page(
+            __('wpmcp', 'wpmcp'),
+            $menu_title,
+            'manage_options',
+            'wpmcp',
+            [new History_Page(), 'render']
+        );
+
+        // The history screen, added explicitly rather than left to the
+        // duplicate WordPress auto-creates for the first submenu: that copy
+        // clones the top-level MENU TITLE verbatim, which now carries the
+        // pending-proposal bubble, and the bubble must appear once. Passing
+        // the parent's own slug suppresses the auto-copy (see add_submenu_page)
+        // and keeps this entry's label exactly what it has always rendered as.
+        add_submenu_page(
+            'wpmcp',
             __('wpmcp', 'wpmcp'),
             __('wpmcp', 'wpmcp'),
             'manage_options',
@@ -610,6 +654,22 @@ final class Plugin
             Skills_Settings_Page::SLUG,
             [new Skills_Settings_Page(), 'render']
         );
+
+        // Agent memory (issue #131). The target is the wpmcp_memory CPT list
+        // table, not a bespoke screen: approving a proposal is WordPress's own
+        // pending -> publish flow, with its list table, nonces, capability
+        // checks and revisions, so there is no second approval path to audit.
+        // Publishing an entry can enforce a server-side denial or broadcast
+        // text to every connecting agent, hence manage_options like the rest.
+        if ($memory) {
+            add_submenu_page(
+                'wpmcp',
+                'wpmcp: Agent Memory',
+                Memory_Page::badged('Memory', $pending),
+                'manage_options',
+                Memory_Page::submenu_slug()
+            );
+        }
     }
 
     /**
@@ -1984,11 +2044,94 @@ final class Plugin
             'cloud'          => fn () => $this->register_cloud_abilities($registrar),
             'search'         => fn () => $this->register_search_abilities($registrar),
             'skills'         => fn () => $this->register_skills_abilities($registrar),
+            'memory'         => fn () => $this->register_memory_abilities($registrar),
         ];
         foreach ($groups as $group => $register) {
             if ($this->group_enabled($group)) {
                 $register();
             }
+        }
+    }
+
+    /**
+     * Agent project memory (issue #131): the three tools an agent uses to read
+     * this site's approved memory and to PROPOSE additions to it.
+     *
+     * All PRO, manage_options, domain 'memory', and all three refuse to run
+     * until the wpmcp_enable_memory filter opts the site in (default false),
+     * so registering them grants nothing by itself. manage_options rather than
+     * edit_posts because a published entry is broadcast to every connecting
+     * agent and can deny writes site-wide; even proposing into that queue is a
+     * site-operations action, not a content edit.
+     *
+     * Note what is deliberately NOT here: nothing that publishes. The write
+     * path is memory-propose, which hard-codes 'pending' with no status
+     * parameter to override, so the only way an entry becomes live is an
+     * administrator publishing it in wp-admin.
+     */
+    private function register_memory_abilities(Registrar $registrar): void
+    {
+        $entry_props = [
+            'title'    => ['type' => 'string'],
+            'text'     => ['type' => 'string'],
+            'kind'     => ['type' => 'string', 'enum' => \WPMCP\Memory\Memory_Entry::KINDS],
+            'severity' => ['type' => 'string', 'enum' => \WPMCP\Memory\Memory_Entry::SEVERITIES],
+            'targets'  => ['type' => 'array', 'items' => ['type' => 'string']],
+        ];
+
+        $tools = [
+            [
+                'memory-recall',
+                'read',
+                new \WPMCP\Tools\Memory\Memory_Recall(),
+                'Read this site\'s APPROVED project memory: durable facts, conventions and guardrails an administrator has published, plus published session summaries and the currently enforced block rules. Pending proposals are never returned (only their count), so an agent cannot read back its own unapproved suggestions as site policy. Read-only',
+                [
+                    'topic' => ['type' => 'string'],
+                    'kind'  => ['type' => 'string', 'enum' => \WPMCP\Memory\Memory_Entry::KINDS],
+                    'limit' => ['type' => 'integer'],
+                ],
+                [],
+            ],
+            [
+                'memory-propose',
+                'create',
+                new \WPMCP\Tools\Memory\Memory_Propose(),
+                'Propose one durable memory entry. Stored PENDING and inert (not injected into future sessions, and if severity=block not enforced) until an administrator publishes it in wp-admin. A severity=block proposal must name at least one target (tool:<ability>, post_id:<id>, post_type:<slug>); once published the server refuses every matching call in the permission check, so the guardrail is enforced, not advisory',
+                $entry_props,
+                ['text'],
+            ],
+            [
+                'memory-save-summary',
+                'create',
+                new \WPMCP\Tools\Memory\Memory_Save_Summary(),
+                'Record what a session changed, as a pending session-summary entry. The factual part is computed by the server from that session\'s snapshot rows (the before-images written ahead of every mutation), not from the supplied prose and not by any LLM, so it cannot over- or under-claim. Optional takeaways are filed as individual pending proposals',
+                [
+                    'session_id' => ['type' => 'string'],
+                    'summary'    => ['type' => 'string'],
+                    'takeaways'  => [
+                        'type'  => 'array',
+                        'items' => ['type' => 'object', 'properties' => $entry_props],
+                    ],
+                ],
+                ['session_id'],
+            ],
+        ];
+
+        foreach ($tools as [$name, $op, $handler, $desc, $props, $required]) {
+            $schema = ['type' => 'object', 'properties' => $props];
+            if ([] !== $required) {
+                $schema['required'] = $required;
+            }
+            $registrar->register(new Ability(
+                'wpmcp/' . $name,
+                'pro',
+                $desc,
+                $schema,
+                [$handler, 'handle'],
+                'manage_options',
+                'memory',
+                $op
+            ));
         }
     }
 

@@ -33,9 +33,12 @@ class ToolsListBudgetTest extends \WP_UnitTestCase
      *  (create/update/delete/reorder-global-class), whose two authoring tools
      *  advertise the full friendly style-key list so an agent can style a
      *  class without a second schema round trip, which puts the payload at
-     *  148066 bytes over 281 tools.
+     *  148066 bytes over 281 tools; raised 155000 -> 160000 in review for the
+     *  agent project memory tools (memory-recall, memory-propose,
+     *  memory-save-summary), which puts the payload at 156353 bytes over 293
+     *  tools.
      *  Compact tool mode keeps clients with tool caps at ~2.8KB regardless. */
-    private const TOOLS_LIST_BYTE_BUDGET = 155000;
+    private const TOOLS_LIST_BYTE_BUDGET = 160000;
 
     /** @return array<int, array<string, mixed>> tools/list-shaped entries. */
     private static function payload(): array

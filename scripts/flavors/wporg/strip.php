@@ -74,6 +74,12 @@ const REMOVED_PATHS = [
     // library itself is data rather than a free feature, so the directory
     // goes whole rather than being swept.
     'src/Tools/Brand',
+    // Agent project memory (issue #131). Only the three PRO ability wrappers
+    // go. src/Memory and src/Admin/Memory_Page.php stay: publishing a
+    // guardrail and having the server enforce it in Registrar::is_permitted()
+    // is free on every tier, and a safety rule that stopped applying in this
+    // build would be worse than not shipping it.
+    'src/Tools/Memory',
 ];
 
 /** Whole method declarations deleted from Plugin.php: every one is pro-only. */
@@ -88,6 +94,7 @@ const REMOVED_METHODS = [
     'register_elementor_pro_abilities',
     'register_elementor_structural_abilities',
     'register_brand_kit_abilities',
+    'register_memory_abilities',
 ];
 
 /**
@@ -297,6 +304,7 @@ $plugin_edits = [
     ["            'widget_builder' => fn () => \$this->register_widget_builder_abilities(\$registrar),\n", '', 1],
     ["            'block_builder'  => fn () => \$this->register_block_builder_abilities(\$registrar),\n", '', 1],
     ["            'cloud'          => fn () => \$this->register_cloud_abilities(\$registrar),\n", '', 1],
+    ["            'memory'         => fn () => \$this->register_memory_abilities(\$registrar),\n", '', 1],
     // The two pro suites chained off the free Elementor group.
     ["\n        \$this->register_elementor_pro_abilities(\$registrar);\n", "\n", 1],
     ["\n        \$this->register_elementor_structural_abilities(\$registrar);\n", "\n", 1],
