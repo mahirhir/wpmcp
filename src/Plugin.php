@@ -239,7 +239,10 @@ use WPMCP\Tools\Menus\Delete_Menu;
 use WPMCP\Auth\Endpoints as OAuth_Endpoints;
 use WPMCP\Auth\Bearer_Auth;
 
-if (! defined('ABSPATH') && ! defined('WPMCP_TESTING')) {
+// Plugin Check's Direct_File_Access_Check only accepts the bare defined()
+// test; an extra conjunct makes it report the file as unprotected. The test
+// bootstrap defines ABSPATH itself, so the guard needs no test escape hatch.
+if (! defined('ABSPATH')) {
     exit;
 }
 
@@ -429,8 +432,8 @@ final class Plugin
         // users' site-wide agent mutations, so it is gated at manage_options,
         // matching Restore_Controller::handle()'s ajax capability check.
         add_menu_page(
-            'wpmcp',
-            'wpmcp',
+            __('wpmcp', 'wpmcp'),
+            __('wpmcp', 'wpmcp'),
             'manage_options',
             'wpmcp',
             [new History_Page(), 'render']
@@ -441,8 +444,8 @@ final class Plugin
         // site-wide agent mutations, so it needs the same trust level.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Audit Log',
-            'Audit Log',
+            __('wpmcp: Audit Log', 'wpmcp'),
+            __('Audit Log', 'wpmcp'),
             'manage_options',
             'wpmcp-audit-log',
             [new Audit_Log_Page(), 'render']
@@ -453,8 +456,8 @@ final class Plugin
         // it is a site-wide trust decision — manage_options, like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Handshake Instructions',
-            'Handshake',
+            __('wpmcp: Handshake Instructions', 'wpmcp'),
+            __('Handshake', 'wpmcp'),
             'manage_options',
             'wpmcp-handshake',
             [new Handshake_Settings_Page(), 'render']
@@ -466,8 +469,8 @@ final class Plugin
         // site-wide trust decisions, so manage_options like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Connection',
-            'Connection',
+            __('wpmcp: Connection', 'wpmcp'),
+            __('Connection', 'wpmcp'),
             'manage_options',
             Connection_Page::SLUG,
             [new Connection_Page(), 'render']
@@ -478,8 +481,8 @@ final class Plugin
         // like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Abilities',
-            'Abilities',
+            __('wpmcp: Abilities', 'wpmcp'),
+            __('Abilities', 'wpmcp'),
             'manage_options',
             Ability_Grid_Page::SLUG,
             [new Ability_Grid_Page(), 'render']

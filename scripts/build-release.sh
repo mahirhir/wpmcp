@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Build the distributable plugin zip: dist/wpmcp-<version>.zip
-# One artifact serves free and pro (runtime license gating via Pro\Gate).
+# Build the self-hosted distribution zip: dist/wpmcp-pro-<version>.zip
+#
+# One artifact serves free and pro, gated at runtime by Pro\Gate. This is the
+# zip sold and delivered off-directory, where licensing and the two guarded
+# execution sites are permitted. The WordPress.org cut is a different artifact
+# with the paid tier removed rather than gated: scripts/build-wporg-release.sh,
+# which is the one that writes dist/wpmcp-<version>.zip.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,7 +24,7 @@ composer install --working-dir="$STAGE" --no-dev --optimize-autoloader --quiet -
 rm -f "$STAGE/composer.json" "$STAGE/composer.lock"
 
 mkdir -p "$ROOT/dist"
-ZIP="$ROOT/dist/wpmcp-$VERSION.zip"
+ZIP="$ROOT/dist/wpmcp-pro-$VERSION.zip"
 rm -f "$ZIP"
 (cd "$STAGE_PARENT" && zip -rq "$ZIP" wpmcp -x "*.DS_Store")
 
