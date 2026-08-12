@@ -15,9 +15,9 @@
  */
 
 return [
-    'total'     => 266,
+    'total'     => 270,
     'free'      => 193,
-    'pro'       => 73,
+    'pro'       => 77,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
         'wpmcp/acf-write' => 'free',
@@ -41,6 +41,7 @@ return [
         'wpmcp/call-rest' => 'free',
         'wpmcp/call-tool' => 'free',
         'wpmcp/cancel-backup-job' => 'free',
+        'wpmcp/cancel-cli-job' => 'pro',
         'wpmcp/check-contrast' => 'pro',
         'wpmcp/clear-cache' => 'free',
         'wpmcp/cloud-connect' => 'pro',
@@ -81,6 +82,7 @@ return [
         'wpmcp/detect-builder' => 'pro',
         'wpmcp/detect-elementor-version' => 'pro',
         'wpmcp/disable-maintenance' => 'free',
+        'wpmcp/dispatch-cli-job' => 'pro',
         'wpmcp/duplicate-block' => 'free',
         'wpmcp/duplicate-element' => 'pro',
         'wpmcp/edit-comment' => 'free',
@@ -104,6 +106,7 @@ return [
         'wpmcp/get-block-type' => 'free',
         'wpmcp/get-builder-content' => 'pro',
         'wpmcp/get-cache-status' => 'free',
+        'wpmcp/get-cli-job' => 'pro',
         'wpmcp/get-comment' => 'free',
         'wpmcp/get-connection-info' => 'free',
         'wpmcp/get-custom-block' => 'pro',
@@ -159,6 +162,7 @@ return [
         'wpmcp/list-backup-jobs' => 'free',
         'wpmcp/list-block-control-types' => 'pro',
         'wpmcp/list-block-types' => 'free',
+        'wpmcp/list-cli-jobs' => 'pro',
         'wpmcp/list-code-snippets' => 'pro',
         'wpmcp/list-comments' => 'free',
         'wpmcp/list-control-types' => 'pro',
