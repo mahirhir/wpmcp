@@ -37,11 +37,20 @@ use WPMCP\Tools\Analysis\Check_Contrast;
 use WPMCP\Tools\Code\Validate_Php_Snippet;
 use WPMCP\Tools\Code\Run_Php_Snippet;
 use WPMCP\Tools\Cli\Run_Wp_Cli;
+use WPMCP\Tools\Cli\Dispatch_Cli_Job;
+use WPMCP\Tools\Cli\Get_Cli_Job;
+use WPMCP\Tools\Cli\List_Cli_Jobs;
+use WPMCP\Tools\Cli\Cancel_Cli_Job;
+use WPMCP\Tools\Cli\Run_Cli_Job;
 use WPMCP\Tools\Analysis\Extract_Content;
 use WPMCP\Tools\Analysis\Analyze_Seo;
 use WPMCP\Tools\Analysis\Analyze_Accessibility;
+use WPMCP\Tools\Analysis\Fix_Color_Contrast;
+use WPMCP\Tools\Analysis\Add_Alt_Text_From_Context;
+use WPMCP\Tools\Analysis\Fix_Link_Text;
 use WPMCP\Admin\Handshake_Settings_Page;
 use WPMCP\Admin\Connection_Page;
+use WPMCP\Admin\Announcements;
 use WPMCP\Admin\Ability_Grid_Page;
 use WPMCP\Governance\Default_Seeder;
 use WPMCP\Connect\Exposure;
@@ -181,6 +190,10 @@ use WPMCP\Tools\Elementor\Get_Global_Settings;
 use WPMCP\Tools\Elementor\Update_Global_Colors;
 use WPMCP\Tools\Elementor\Update_Global_Typography;
 use WPMCP\Tools\Elementor\List_Global_Classes;
+use WPMCP\Tools\Brand\List_Brand_Kits;
+use WPMCP\Tools\Brand\Get_Brand_Kit;
+use WPMCP\Tools\Brand\Apply_Brand_Kit;
+use WPMCP\Tools\Brand\Rollback_Brand_Kit;
 use WPMCP\Tools\Elementor\Export_Page;
 use WPMCP\Tools\Elementor\Save_As_Template;
 use WPMCP\Tools\Elementor\Apply_Template;
@@ -237,8 +250,15 @@ use WPMCP\Tools\Menus\Assign_Menu_To_Location;
 use WPMCP\Tools\Menus\Delete_Menu;
 use WPMCP\Auth\Endpoints as OAuth_Endpoints;
 use WPMCP\Auth\Bearer_Auth;
+use WPMCP\Auth\OAuth_Config;
+use WPMCP\Auth\Oauth_Gc;
+use WPMCP\MCP\Structured_Result;
+use WPMCP\MCP\Transport_Guard;
 
-if (! defined('ABSPATH') && ! defined('WPMCP_TESTING')) {
+// Plugin Check's Direct_File_Access_Check only accepts the bare defined()
+// test; an extra conjunct makes it report the file as unprotected. The test
+// bootstrap defines ABSPATH itself, so the guard needs no test escape hatch.
+if (! defined('ABSPATH')) {
     exit;
 }
 
@@ -359,6 +379,13 @@ final class Plugin
             // the queued job (producing a backup artifact) and flips its
             // status to completed/failed. See Run_Backup_Job's docblock.
             add_action(Run_Backup_Job::HOOK, [new Run_Backup_Job(), 'handle']);
+            // The WP-Cron executor for dispatch-cli-job's scheduled events
+            // (issue #84). It re-runs the FULL wp-cli guard chain before
+            // executing anything, so hooking it here does not by itself let
+            // any queued command run: a job queued while the opt-in gate was
+            // open still fails closed once that gate is shut. See
+            // Run_Cli_Job's docblock.
+            add_action(Run_Cli_Job::HOOK, [new Run_Cli_Job(), 'handle']);
             // Front-end maintenance-mode enforcement. template_redirect runs after
             // WordPress has resolved the query but before a template is loaded, and
             // does not fire for wp-admin or REST requests, so authenticated capable
@@ -394,6 +421,10 @@ final class Plugin
             // Secret-free Claude Desktop bundle download from the Connection
             // screen (nonce + manage_options enforced inside the handler).
             add_action('admin_post_wpmcp_download_bundle', [new Connection_Page(), 'download_bundle']);
+            // Cloud announcements feed (issue #138): dismissible dated
+            // notices on wpmcp screens only, never site-wide. 24h transient
+            // cache, per-user dismissal, silent on any cloud failure.
+            Announcements::register();
             // Compact tool-surface mode (issue #79): in compact mode the
             // adapter's advertised tools/list collapses to the meta-tools
             // plus connection basics. Exposure-only — registration and
@@ -401,6 +432,28 @@ final class Plugin
             // (which owns this filter) is installed, and while the mode
             // resolves to 'full' (the default).
             add_filter('mcp_adapter_tools_list', [new Tool_Exposure(), 'filter_tools_list'], 10, 2);
+            // Transport hardening (issue #133): no-store cache headers on
+            // every MCP + OAuth response, display_errors forced off so a
+            // stray notice cannot corrupt JSON-RPC framing, and a 421
+            // site-URL-mismatch guard for connectors left pointing at an
+            // old domain. Scoped to our own routes; everything else on the
+            // site is untouched.
+            (new Transport_Guard())->register();
+            // structuredContent must serialize as a JSON object. Normalized
+            // at the wire boundary only, so tool contracts are unchanged.
+            (new Structured_Result())->register();
+            // Scheduled OAuth garbage collection (issue #133). The cron
+            // callback is always attached (so a previously scheduled event
+            // still has a handler if OAuth is switched off); the event is
+            // only kept on the schedule while OAuth is enabled.
+            Oauth_Gc::register();
+            add_action('init', static function (): void {
+                if (OAuth_Config::is_enabled()) {
+                    Oauth_Gc::ensure_scheduled();
+                    return;
+                }
+                Oauth_Gc::unschedule();
+            }, 20);
         }
     }
 
@@ -424,8 +477,8 @@ final class Plugin
         // users' site-wide agent mutations, so it is gated at manage_options,
         // matching Restore_Controller::handle()'s ajax capability check.
         add_menu_page(
-            'wpmcp',
-            'wpmcp',
+            __('wpmcp', 'wpmcp'),
+            __('wpmcp', 'wpmcp'),
             'manage_options',
             'wpmcp',
             [new History_Page(), 'render']
@@ -436,10 +489,10 @@ final class Plugin
         // site-wide agent mutations, so it needs the same trust level.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Audit Log',
-            'Audit Log',
+            __('wpmcp: Audit Log', 'wpmcp'),
+            __('Audit Log', 'wpmcp'),
             'manage_options',
-            'wpmcp-audit-log',
+            Audit_Log_Page::SLUG,
             [new Audit_Log_Page(), 'render']
         );
 
@@ -448,8 +501,8 @@ final class Plugin
         // it is a site-wide trust decision — manage_options, like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Handshake Instructions',
-            'Handshake',
+            __('wpmcp: Handshake Instructions', 'wpmcp'),
+            __('Handshake', 'wpmcp'),
             'manage_options',
             'wpmcp-handshake',
             [new Handshake_Settings_Page(), 'render']
@@ -461,8 +514,8 @@ final class Plugin
         // site-wide trust decisions, so manage_options like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Connection',
-            'Connection',
+            __('wpmcp: Connection', 'wpmcp'),
+            __('Connection', 'wpmcp'),
             'manage_options',
             Connection_Page::SLUG,
             [new Connection_Page(), 'render']
@@ -473,8 +526,8 @@ final class Plugin
         // like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Abilities',
-            'Abilities',
+            __('wpmcp: Abilities', 'wpmcp'),
+            __('Abilities', 'wpmcp'),
             'manage_options',
             Ability_Grid_Page::SLUG,
             [new Ability_Grid_Page(), 'render']
@@ -1554,7 +1607,7 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/query',
             'free',
-            'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN/WITH). Writes, DDL, stacked statements, and file-access SQL are rejected before execution. Results are capped',
+            'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN/WITH). Writes, DDL, stacked statements, and file-access SQL are rejected before execution. Reads of the users/usermeta tables are blocked (wpmcp_db_allow_user_table_reads filter opts in, with secrets masked). Results are capped',
             [
                 'type'       => 'object',
                 'properties' => [
@@ -1993,6 +2046,9 @@ final class Plugin
             new \WPMCP\Integrations\Meta_Box_Integration(),
             new \WPMCP\Integrations\Ninja_Forms_Integration(),
             new \WPMCP\Integrations\Fluent_Forms_Integration(),
+            new \WPMCP\Integrations\Forminator_Integration(),
+            new \WPMCP\Integrations\SureForms_Integration(),
+            new \WPMCP\Integrations\MetForm_Integration(),
         ];
 
         foreach ($integrations as $integration) {
@@ -2071,6 +2127,105 @@ final class Plugin
                 'required'   => [ 'command' ],
             ],
             [$run_wp_cli, 'handle'],
+            'manage_options',
+            'cli',
+            'update'
+        ));
+
+        $this->register_cli_job_abilities($registrar);
+    }
+
+    /**
+     * Background CLI job dispatch and polling (issue #84): the async
+     * counterpart to run-wp-cli, for commands (imports, bulk regeneration,
+     * migrations) that cannot finish inside one MCP request/response cycle.
+     * Built on the same WP-Cron job-runner pattern as trigger-backup
+     * (Cli_Job_Store + Run_Cli_Job mirror Backup_Job_Store + Run_Backup_Job).
+     *
+     * Every one of these is PRO at manage_options, domain 'cli', exactly
+     * matching run-wp-cli: dispatching a command asynchronously is the same
+     * capability as running it synchronously, so it must not be reachable
+     * at a lower tier or a weaker capability than the synchronous tool.
+     * dispatch-cli-job is 'create' (it creates a job record),
+     * cancel-cli-job is 'update' (it transitions one), and get-cli-job /
+     * list-cli-jobs are 'read'.
+     *
+     * The exec surface is dispatch-cli-job alone, and it adds no new
+     * privilege: it runs the identical Wp_Cli_Guard_Chain as run-wp-cli
+     * before a job is ever queued, and Run_Cli_Job runs that chain AGAIN
+     * immediately before execution so revoking the opt-in gate also stops
+     * work that is already queued. Rate limiting is inherited from the
+     * Registrar's per-client counter like every other ability. Not routed
+     * through Safe_Mutation, for the same reason run-wp-cli is not: a
+     * wp-cli invocation's effects have no generic before-image to snapshot.
+     */
+    private function register_cli_job_abilities(Registrar $registrar): void
+    {
+        $dispatch_cli_job = new Dispatch_Cli_Job();
+        $get_cli_job      = new Get_Cli_Job();
+        $list_cli_jobs    = new List_Cli_Jobs();
+        $cancel_cli_job   = new Cancel_Cli_Job();
+
+        $registrar->register(new Ability(
+            'wpmcp/dispatch-cli-job',
+            'pro',
+            'Queue a guarded, allowlisted wp-cli command as a background job and return its job id immediately, for long-running work (imports, bulk media regeneration) that cannot complete inside a single request. Poll it with get-cli-job. Subject to exactly the same gates as run-wp-cli: disabled by default (WPMCP_ALLOW_WP_CLI constant or wpmcp_allow_wp_cli filter), refused on production without a separate override, allowlisted subcommands only, and no shell metacharacters or non-allowlisted flags. The guard chain is re-checked immediately before the job actually runs, so closing the gate also stops jobs that are already queued. Optional timeout in seconds (default 300, max 900). Refused while too many jobs are already queued or running',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'command' => [ 'type' => 'string' ],
+                    'timeout' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'command' ],
+            ],
+            [$dispatch_cli_job, 'handle'],
+            'manage_options',
+            'cli',
+            'create'
+        ));
+        $registrar->register(new Ability(
+            'wpmcp/get-cli-job',
+            'pro',
+            'Return a background CLI job\'s current record by job id: status (queued/running/completed/failed/canceled), the command as dispatched, and once it has run its captured stdout/stderr (size-capped), exit code, and timed-out flag, or the error that stopped it. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'job_id' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'job_id' ],
+            ],
+            [$get_cli_job, 'handle'],
+            'manage_options',
+            'cli',
+            'read'
+        ));
+        $registrar->register(new Ability(
+            'wpmcp/list-cli-jobs',
+            'pro',
+            'List background CLI jobs, newest first, with an optional status filter (queued/running/completed/failed/canceled). Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'status' => [ 'type' => 'string' ],
+                ],
+            ],
+            [$list_cli_jobs, 'handle'],
+            'manage_options',
+            'cli',
+            'read'
+        ));
+        $registrar->register(new Ability(
+            'wpmcp/cancel-cli-job',
+            'pro',
+            'Cancel a queued background CLI job: unschedule its WP-Cron event and mark it canceled so it never runs. Refuses with an error if the job is unknown or is no longer queued (already running, or in a terminal status)',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'job_id' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'job_id' ],
+            ],
+            [$cancel_cli_job, 'handle'],
             'manage_options',
             'cli',
             'update'
@@ -4195,6 +4350,108 @@ final class Plugin
         ));
 
         $this->register_elementor_structural_abilities($registrar);
+        $this->register_brand_kit_abilities($registrar);
+    }
+
+    /**
+     * Register the brand-kit tools as pro-tier abilities (issue #75).
+     *
+     * A brand kit is a named design system (four system colors, extra named
+     * swatches, the four system typography tokens, an optional logo
+     * reference) stored as data: bundled presets in Brand_Kit_Store plus
+     * anything a site adds through the `wpmcp_brand_kits` option or filter.
+     * Growing the library therefore never grows the advertised tool surface
+     * — pinned by tests/free/Platform/ToolsListBudgetTest.php.
+     *
+     * apply-brand-kit folds the entire kit into ONE
+     * `_elementor_page_settings` patch handed to Elementor_Kit_Data::write(),
+     * so a whole rebrand is a single snapshot and a single operation_id
+     * rather than one operation per token type; rollback-brand-kit undoes
+     * that operation without the agent needing to have kept the id. The
+     * write is doubly gated: without confirm:true the tool returns the exact
+     * diff and writes nothing, and with it the shared kit guard still
+     * requires a fresh expected_hash.
+     */
+    private function register_brand_kit_abilities(Registrar $registrar): void
+    {
+        $list_brand_kits = new List_Brand_Kits();
+
+        $registrar->register(new Ability(
+            'wpmcp/list-brand-kits',
+            'pro',
+            'List the brand kits available on this site (bundled presets plus any added via the wpmcp_brand_kits option or filter): slug, category, source, the four system colors, distinct font families, logo flag. Filter by category, source (bundled/site) or a search over slug/title/description. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'search'   => [ 'type' => 'string' ],
+                    'category' => [ 'type' => 'string' ],
+                    'source'   => [ 'type' => 'string', 'enum' => [ 'bundled', 'site' ] ],
+                ],
+            ],
+            [$list_brand_kits, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $get_brand_kit = new Get_Brand_Kit();
+
+        $registrar->register(new Ability(
+            'wpmcp/get-brand-kit',
+            'pro',
+            'Return one brand kit\'s full definition in the shape apply-brand-kit writes: system slots as hex, named swatches with their _id, typography already mapped to Elementor typography_* fields. Entries that failed validation are listed in "invalid", which makes the kit unappliable. Read-only',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'slug' => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'slug' ],
+            ],
+            [$get_brand_kit, 'handle'],
+            'edit_posts',
+            'elementor',
+            'read'
+        ));
+
+        $apply_brand_kit = new Apply_Brand_Kit();
+
+        $registrar->register(new Ability(
+            'wpmcp/apply-brand-kit',
+            'pro',
+            'Apply a brand kit to the active Elementor kit (system colors, named swatches, the four system typography tokens, logo) as ONE snapshotted operation, so the whole rebrand undoes in a single rollback. Without confirm:true nothing is written and the exact per-token diff plus the settings_hash to pass back is returned; with it, expected_hash must still match. A kit with any invalid entry is refused, never partly applied. Undoable via rollback-brand-kit or rollback-operation',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'slug'          => [ 'type' => 'string' ],
+                    'confirm'       => [ 'type' => 'boolean' ],
+                    'expected_hash' => [ 'type' => 'string' ],
+                    'include_logo'  => [ 'type' => 'boolean' ],
+                ],
+                'required'   => [ 'slug' ],
+            ],
+            [$apply_brand_kit, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
+
+        $rollback_brand_kit = new Rollback_Brand_Kit();
+
+        $registrar->register(new Ability(
+            'wpmcp/rollback-brand-kit',
+            'pro',
+            'Undo a brand-kit apply by restoring the single snapshot it took, putting palette, swatches, typography and logo back as they were. Defaults to the most recent apply not already rolled back, so the operation_id need not be remembered; pass operation_id to target a specific apply',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'operation_id' => [ 'type' => 'string' ],
+                ],
+            ],
+            [$rollback_brand_kit, 'handle'],
+            'manage_options',
+            'elementor',
+            'update'
+        ));
     }
 
     /**
@@ -5203,14 +5460,27 @@ final class Plugin
     }
 
     /**
-     * Register the SEO + accessibility analysis tools as pro-tier abilities.
+     * Register the SEO + accessibility analysis and auto-fixer tools as
+     * pro-tier abilities.
      *
-     * All four are read-only: they extract and score a post's stored content
-     * and never write anything, so none touch the safety core. Because
-     * Registrar skips 'pro' tier abilities unless Gate::is_pro() is true, these
-     * only register on Pro-tier sites, matching the Elementor deep-editing
-     * pro group. They share domain 'analysis' and operation 'read', so their
-     * read_only_hint annotation derives to true automatically.
+     * The four AUDIT tools (extract-content, analyze-seo,
+     * analyze-accessibility, check-contrast) are read-only: they extract and
+     * score a post's stored content and never write anything, so none touch
+     * the safety core. They share domain 'analysis' and operation 'read', so
+     * their read_only_hint annotation derives to true automatically.
+     *
+     * The three AUTO-FIXERS (fix-color-contrast, add-alt-text-from-context,
+     * fix-link-text, issue #71) close the loop on those audits. They are
+     * registered with operation 'update' even though their DEFAULT behavior is
+     * a dry run that writes nothing: an annotation has to describe what the
+     * tool can do at its most permissive, not its safest mode, so a client
+     * that refuses non-read-only tools must refuse these. Each fixer writes
+     * its entire pass through one Safe_Mutation snapshot, so the returned
+     * operation_id rolls back the whole pass (see Tools\Analysis\Fix_Pass).
+     *
+     * Because Registrar skips 'pro' tier abilities unless Gate::is_pro() is
+     * true, all seven only register on Pro-tier sites, matching the Elementor
+     * deep-editing pro group.
      */
     private function register_analysis_abilities(Registrar $registrar): void
     {
@@ -5290,6 +5560,72 @@ final class Plugin
             'edit_posts',
             'analysis',
             'read'
+        ));
+
+        $fix_color_contrast = new Fix_Color_Contrast();
+
+        $registrar->register(new Ability(
+            'wpmcp/fix-color-contrast',
+            'pro',
+            'Raise failing inline text/background color pairs in a post to a target WCAG ratio, moving lightness only so the hue survives. Reports before/after color, ratio and achieved level per pair. Dry run unless apply=true; applying writes the pass under one snapshot that one rollback reverts',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'            => [ 'type' => 'integer' ],
+                    'target_ratio'       => [ 'type' => 'number' ],
+                    'default_background' => [ 'type' => 'string' ],
+                    'apply'              => [ 'type' => 'boolean' ],
+                    'session_id'         => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$fix_color_contrast, 'handle'],
+            'edit_posts',
+            'analysis',
+            'update'
+        ));
+
+        $add_alt_text = new Add_Alt_Text_From_Context();
+
+        $registrar->register(new Ability(
+            'wpmcp/add-alt-text-from-context',
+            'pro',
+            'Write alt text for a post\'s images that have none, from the filename, nearest heading, or post title. Never overwrites existing alt text unless overwrite_existing=true, and never touches images marked decorative. Dry run unless apply=true; applying writes the pass under one snapshot that one rollback reverts',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'            => [ 'type' => 'integer' ],
+                    'overwrite_existing' => [ 'type' => 'boolean' ],
+                    'apply'              => [ 'type' => 'boolean' ],
+                    'session_id'         => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$add_alt_text, 'handle'],
+            'edit_posts',
+            'analysis',
+            'update'
+        ));
+
+        $fix_link_text = new Fix_Link_Text();
+
+        $registrar->register(new Ability(
+            'wpmcp/fix-link-text',
+            'pro',
+            'Replace empty or generic anchor text ("click here", "read more") on internal links with the destination post\'s title, fixing WCAG 2.4.4 and weak SEO anchors at once. External links and anchors containing markup are skipped. Dry run unless apply=true; applying writes the pass under one snapshot that one rollback reverts',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_id'    => [ 'type' => 'integer' ],
+                    'apply'      => [ 'type' => 'boolean' ],
+                    'session_id' => [ 'type' => 'string' ],
+                ],
+                'required'   => [ 'post_id' ],
+            ],
+            [$fix_link_text, 'handle'],
+            'edit_posts',
+            'analysis',
+            'update'
         ));
     }
 

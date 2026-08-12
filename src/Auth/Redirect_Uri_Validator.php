@@ -36,7 +36,7 @@ class Redirect_Uri_Validator
             return false;
         }
 
-        $parts = parse_url($uri);
+        $parts = wp_parse_url($uri);
         if (false === $parts) {
             return false;
         }
