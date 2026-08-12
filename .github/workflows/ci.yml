@@ -44,3 +44,42 @@ jobs:
         with:
           name: coverage-report
           path: coverage/
+
+  # wp.org compliance. Two runs: the source tree under the distribution
+  # profile, and the built free zip under the strict wporg-free profile,
+  # which is the artifact the directory would actually receive.
+  #
+  # The two check steps are continue-on-error until the known violations are
+  # fixed (paid gating, undisclosed external services, the two execution
+  # sites). Deleting those two lines is what turns this job into a gate; the
+  # engine already exits non-zero on any blocker.
+  compliance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.3', coverage: none }
+      - run: composer install --no-interaction
+      - name: Compliance, distribution profile (source tree)
+        continue-on-error: true
+        run: composer compliance
+      - name: Build the free zip
+        run: bash scripts/build-release.sh
+      - name: Unpack the built zip
+        run: |
+          mkdir -p build/wporg
+          unzip -q dist/wpmcp-*.zip -d build/wporg
+      - name: Compliance, wporg-free profile (built zip)
+        continue-on-error: true
+        run: php tools/compliance/bin/compliance.php --profile=wporg-free --artifact --path=build/wporg/wpmcp
+      - name: Compliance report (markdown)
+        if: always()
+        run: |
+          php tools/compliance/bin/compliance.php --profile=wporg-free --artifact \
+            --path=build/wporg/wpmcp --format=markdown > compliance-report.md || true
+      - name: Upload compliance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report
+          path: compliance-report.md

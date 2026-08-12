@@ -11,14 +11,22 @@
     "squizlabs/php_codesniffer": "^3.9"
   },
   "autoload": { "psr-4": { "WPMCP\\": "src/" } },
-  "autoload-dev": { "psr-4": { "WPMCP\\Tests\\Free\\": "tests/free/", "WPMCP\\Tests\\Pro\\": "tests/pro/" } },
+  "autoload-dev": {
+    "psr-4": {
+      "WPMCP\\Tests\\Free\\": "tests/free/",
+      "WPMCP\\Tests\\Pro\\": "tests/pro/",
+      "WPMCP\\Compliance\\": "tools/compliance/src/"
+    }
+  },
   "scripts": {
     "test": "phpunit",
     "test:free": "phpunit --testsuite free",
     "test:pro": "phpunit --testsuite pro",
     "test:coverage": "phpunit --coverage-clover coverage/clover.xml --coverage-text",
     "manifest:regenerate": "WPMCP_REGENERATE_MANIFEST=1 phpunit --filter AbilityManifestTest",
-    "lint": "phpcs -q"
+    "lint": "phpcs -q",
+    "compliance": "php tools/compliance/bin/compliance.php --profile=distribution",
+    "compliance:wporg": "php tools/compliance/bin/compliance.php --profile=wporg-free --no-artifact"
   },
   "config": {
     "allow-plugins": { "*": true },
