@@ -49,7 +49,13 @@ const REMOVED_PATHS = [
     // Cloud_Client. The paid part is the ability wrappers below, not the seam.
     'src/Tools/Cloud',
     'src/Tools/Analysis',
-    'src/Tools/Builders',
+    // Note: src/Tools/Builders is not removed by path any more. The same
+    // reasoning as src/Cloud applies to it since issue #83: Builder_Detector
+    // and Bricks_Content are plain postmeta readers with no paid gating in
+    // them, and the free content search index reads through both. The paid
+    // part is the ability wrappers (Detect_Builder, Get_Builder_Content,
+    // Update_Builder_Content), which the sweep below takes out along with
+    // Divi_Content once register_builder_abilities is gone.
     'src/Tools/BlockBuilder',
     'src/Tools/WidgetBuilder',
     // Execution. The guards stay (Governance\Opt_In_Gates references them);
@@ -395,7 +401,7 @@ $applied += prune_unused_imports($stage);
  * so leaving forty unreachable pro handlers in the zip would miss the point
  * even though nothing can call them.
  */
-const SWEPT_DIRECTORIES = ['src/Tools/Elementor'];
+const SWEPT_DIRECTORIES = ['src/Tools/Elementor', 'src/Tools/Builders'];
 
 $swept = sweep_unreferenced($stage, SWEPT_DIRECTORIES);
 $applied += count($swept);
