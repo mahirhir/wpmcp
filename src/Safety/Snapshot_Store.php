@@ -12,6 +12,15 @@ if (! defined('ABSPATH')) {
 
 class Snapshot_Store
 {
+    /**
+     * Snapshots kept per site by default.
+     *
+     * The single source of truth for the number, so the directory build can
+     * read it directly (see scripts/flavors/wporg/strip.php) instead of
+     * asking a licence gate what the cap is.
+     */
+    public const DEFAULT_HISTORY_LIMIT = 20;
+
     public static function table_name(): string
     {
         global $wpdb;

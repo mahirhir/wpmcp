@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 264,
-    'free'      => 187,
+    'total'     => 270,
+    'free'      => 193,
     'pro'       => 77,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -97,6 +97,8 @@ return [
         'wpmcp/fluentforms-write' => 'free',
         'wpmcp/formidable-read' => 'free',
         'wpmcp/formidable-write' => 'free',
+        'wpmcp/forminator-read' => 'free',
+        'wpmcp/forminator-write' => 'free',
         'wpmcp/generate-widget' => 'pro',
         'wpmcp/get-analytics-connection-status' => 'free',
         'wpmcp/get-analytics-summary' => 'free',
@@ -204,6 +206,8 @@ return [
         'wpmcp/mec-write' => 'free',
         'wpmcp/metabox-read' => 'free',
         'wpmcp/metabox-write' => 'free',
+        'wpmcp/metform-read' => 'free',
+        'wpmcp/metform-write' => 'free',
         'wpmcp/moderate-comment' => 'free',
         'wpmcp/move-block' => 'free',
         'wpmcp/move-element' => 'pro',
@@ -245,6 +249,8 @@ return [
         'wpmcp/set-widget-status' => 'pro',
         'wpmcp/sideload-image' => 'free',
         'wpmcp/suggest-internal-links' => 'free',
+        'wpmcp/sureforms-read' => 'free',
+        'wpmcp/sureforms-write' => 'free',
         'wpmcp/switch-theme' => 'free',
         'wpmcp/tec-read' => 'free',
         'wpmcp/tec-write' => 'free',
