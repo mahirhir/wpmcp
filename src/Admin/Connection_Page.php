@@ -259,6 +259,16 @@ class Connection_Page
             <?php if (isset($result['self_test'])) : ?>
                 <div class="notice notice-<?php echo $result['self_test']['ok'] ? 'success' : 'error'; ?>">
                     <p><?php echo esc_html($result['self_test']['message']); ?></p>
+                    <?php if (! empty($result['self_test']['checks'])) : ?>
+                        <ul style="margin-left: 1.5em; list-style: disc;">
+                            <?php foreach ($result['self_test']['checks'] as $check) : ?>
+                                <li>
+                                    <strong><?php echo esc_html(($check['ok'] ? "\u{2713} " : "\u{2717} ") . $check['label']); ?></strong>
+                                    <br><span class="description"><?php echo esc_html($check['detail']); ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
 

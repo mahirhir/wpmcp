@@ -250,6 +250,10 @@ use WPMCP\Tools\Menus\Assign_Menu_To_Location;
 use WPMCP\Tools\Menus\Delete_Menu;
 use WPMCP\Auth\Endpoints as OAuth_Endpoints;
 use WPMCP\Auth\Bearer_Auth;
+use WPMCP\Auth\OAuth_Config;
+use WPMCP\Auth\Oauth_Gc;
+use WPMCP\MCP\Structured_Result;
+use WPMCP\MCP\Transport_Guard;
 
 // Plugin Check's Direct_File_Access_Check only accepts the bare defined()
 // test; an extra conjunct makes it report the file as unprotected. The test
@@ -428,6 +432,28 @@ final class Plugin
             // (which owns this filter) is installed, and while the mode
             // resolves to 'full' (the default).
             add_filter('mcp_adapter_tools_list', [new Tool_Exposure(), 'filter_tools_list'], 10, 2);
+            // Transport hardening (issue #133): no-store cache headers on
+            // every MCP + OAuth response, display_errors forced off so a
+            // stray notice cannot corrupt JSON-RPC framing, and a 421
+            // site-URL-mismatch guard for connectors left pointing at an
+            // old domain. Scoped to our own routes; everything else on the
+            // site is untouched.
+            (new Transport_Guard())->register();
+            // structuredContent must serialize as a JSON object. Normalized
+            // at the wire boundary only, so tool contracts are unchanged.
+            (new Structured_Result())->register();
+            // Scheduled OAuth garbage collection (issue #133). The cron
+            // callback is always attached (so a previously scheduled event
+            // still has a handler if OAuth is switched off); the event is
+            // only kept on the schedule while OAuth is enabled.
+            Oauth_Gc::register();
+            add_action('init', static function (): void {
+                if (OAuth_Config::is_enabled()) {
+                    Oauth_Gc::ensure_scheduled();
+                    return;
+                }
+                Oauth_Gc::unschedule();
+            }, 20);
         }
     }
 
