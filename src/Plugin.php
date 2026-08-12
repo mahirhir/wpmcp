@@ -3656,11 +3656,14 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/get-elementor-data',
             'pro',
-            'Return a page\'s parsed Elementor element tree (id, elType, widgetType, settings, and nested elements for every node), read directly from its _elementor_data postmeta. Read-only',
+            'Return a page\'s parsed Elementor element tree (id, elType, widgetType, settings, and nested elements for every node), read directly from its _elementor_data postmeta. For large pages use summary=true (skeleton only: id, elType, widgetType, label, child_count, descendant_count), max_depth to stop at a depth (cut nodes report truncated_children), and element_id to window on one subtree. Always reports total_elements, returned_elements and truncated; data_hash always covers the whole page, so a windowed read is still valid as expected_hash. Read-only',
             [
                 'type'       => 'object',
                 'properties' => [
-                    'post_id' => [ 'type' => 'integer' ],
+                    'post_id'    => [ 'type' => 'integer' ],
+                    'summary'    => [ 'type' => 'boolean' ],
+                    'max_depth'  => [ 'type' => 'integer' ],
+                    'element_id' => [ 'type' => 'string' ],
                 ],
                 'required'   => [ 'post_id' ],
             ],
@@ -4929,7 +4932,7 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/build-page',
             'free',
-            'Compose a complete page from ONE declarative spec: title, a recursive sections/blocks tree, media references (existing attachment ids), and optional menu placement. The whole composition is a single atomic, recoverable operation: the spec is strictly validated (node-path-addressed errors, bounded size/nodes/depth) before any write, a mid-build failure automatically removes everything it created, and on success one operation_id is returned whose rollback-operation removes the page and its menu placement entirely. Markup is composed deterministically from the spec; nothing in the spec is evaluated or executed. dialect "gutenberg" (default, free) builds block markup; dialect "elementor" (PRO, requires Elementor) builds an _elementor_data element tree',
+            'Compose a complete page from ONE declarative spec: title, a recursive sections/blocks tree, media references (existing attachment ids), and optional menu placement. The whole composition is a single atomic, recoverable operation: the spec is strictly validated (node-path-addressed errors, bounded size/nodes/depth) before any write, a mid-build failure automatically removes everything it created, and on success one operation_id is returned whose rollback-operation removes the page and its menu placement entirely. Markup is composed deterministically from the spec; nothing in the spec is evaluated or executed. dialect "gutenberg" (default, free) builds block markup; dialect "elementor" (PRO, requires Elementor) builds an _elementor_data element tree. Set dry_run=true to validate and compose WITHOUT writing: the reply reports element counts per node type, nesting depth, markup size, unknown widget types, atomic props that had to be coerced, and every referential problem at once',
             [
                 'type'       => 'object',
                 'properties' => [
@@ -4958,6 +4961,7 @@ final class Plugin
                         ],
                         'required'   => [ 'title', 'content' ],
                     ],
+                    'dry_run'    => [ 'type' => 'boolean' ],
                     'session_id' => [ 'type' => 'string' ],
                 ],
                 'required'   => [ 'spec' ],
