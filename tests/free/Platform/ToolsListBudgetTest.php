@@ -24,7 +24,7 @@ class ToolsListBudgetTest extends \WP_UnitTestCase
      *  135000 in review for the EMCP Elementor parity expansion (global Kit,
      *  templates, theme builder, atomic elements, popups, dynamic tags);
      *  raised 135000 -> 140000 in review for the forms breadth cluster
-     *  (Forminator, SureForms, MetForm), which puts the payload at 135351
+     *  (Forminator, SureForms, MetForm), which puts the payload at 135470
      *  bytes over 266 tools.
      *  Compact tool mode keeps clients with tool caps at ~2.8KB regardless. */
     private const TOOLS_LIST_BYTE_BUDGET = 140000;

@@ -42,6 +42,7 @@ use WPMCP\Tools\Analysis\Analyze_Seo;
 use WPMCP\Tools\Analysis\Analyze_Accessibility;
 use WPMCP\Admin\Handshake_Settings_Page;
 use WPMCP\Admin\Connection_Page;
+use WPMCP\Admin\Announcements;
 use WPMCP\Admin\Ability_Grid_Page;
 use WPMCP\Governance\Default_Seeder;
 use WPMCP\Connect\Exposure;
@@ -238,7 +239,10 @@ use WPMCP\Tools\Menus\Delete_Menu;
 use WPMCP\Auth\Endpoints as OAuth_Endpoints;
 use WPMCP\Auth\Bearer_Auth;
 
-if (! defined('ABSPATH') && ! defined('WPMCP_TESTING')) {
+// Plugin Check's Direct_File_Access_Check only accepts the bare defined()
+// test; an extra conjunct makes it report the file as unprotected. The test
+// bootstrap defines ABSPATH itself, so the guard needs no test escape hatch.
+if (! defined('ABSPATH')) {
     exit;
 }
 
@@ -394,6 +398,10 @@ final class Plugin
             // Secret-free Claude Desktop bundle download from the Connection
             // screen (nonce + manage_options enforced inside the handler).
             add_action('admin_post_wpmcp_download_bundle', [new Connection_Page(), 'download_bundle']);
+            // Cloud announcements feed (issue #138): dismissible dated
+            // notices on wpmcp screens only, never site-wide. 24h transient
+            // cache, per-user dismissal, silent on any cloud failure.
+            Announcements::register();
             // Compact tool-surface mode (issue #79): in compact mode the
             // adapter's advertised tools/list collapses to the meta-tools
             // plus connection basics. Exposure-only — registration and
@@ -424,8 +432,8 @@ final class Plugin
         // users' site-wide agent mutations, so it is gated at manage_options,
         // matching Restore_Controller::handle()'s ajax capability check.
         add_menu_page(
-            'wpmcp',
-            'wpmcp',
+            __('wpmcp', 'wpmcp'),
+            __('wpmcp', 'wpmcp'),
             'manage_options',
             'wpmcp',
             [new History_Page(), 'render']
@@ -436,8 +444,8 @@ final class Plugin
         // site-wide agent mutations, so it needs the same trust level.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Audit Log',
-            'Audit Log',
+            __('wpmcp: Audit Log', 'wpmcp'),
+            __('Audit Log', 'wpmcp'),
             'manage_options',
             'wpmcp-audit-log',
             [new Audit_Log_Page(), 'render']
@@ -448,8 +456,8 @@ final class Plugin
         // it is a site-wide trust decision — manage_options, like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Handshake Instructions',
-            'Handshake',
+            __('wpmcp: Handshake Instructions', 'wpmcp'),
+            __('Handshake', 'wpmcp'),
             'manage_options',
             'wpmcp-handshake',
             [new Handshake_Settings_Page(), 'render']
@@ -461,8 +469,8 @@ final class Plugin
         // site-wide trust decisions, so manage_options like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Connection',
-            'Connection',
+            __('wpmcp: Connection', 'wpmcp'),
+            __('Connection', 'wpmcp'),
             'manage_options',
             Connection_Page::SLUG,
             [new Connection_Page(), 'render']
@@ -473,8 +481,8 @@ final class Plugin
         // like the rest.
         add_submenu_page(
             'wpmcp',
-            'wpmcp: Abilities',
-            'Abilities',
+            __('wpmcp: Abilities', 'wpmcp'),
+            __('Abilities', 'wpmcp'),
             'manage_options',
             Ability_Grid_Page::SLUG,
             [new Ability_Grid_Page(), 'render']
@@ -1554,7 +1562,7 @@ final class Plugin
         $registrar->register(new Ability(
             'wpmcp/query',
             'free',
-            'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN/WITH). Writes, DDL, stacked statements, and file-access SQL are rejected before execution. Results are capped',
+            'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN/WITH). Writes, DDL, stacked statements, and file-access SQL are rejected before execution. Reads of the users/usermeta tables are blocked (wpmcp_db_allow_user_table_reads filter opts in, with secrets masked). Results are capped',
             [
                 'type'       => 'object',
                 'properties' => [

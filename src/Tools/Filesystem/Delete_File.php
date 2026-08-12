@@ -56,7 +56,8 @@ class Delete_File
 
         $rel = Filesystem_Guard::to_relative($abs);
 
-        if (! unlink($abs)) {
+        wp_delete_file($abs);
+        if (is_file($abs)) {
             throw new \RuntimeException('Could not delete the file (check permissions).');
         }
 
