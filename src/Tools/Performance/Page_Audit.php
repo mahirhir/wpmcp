@@ -85,15 +85,13 @@ class Page_Audit
 
         $this->last_pinned_ip = null;
         $pin_callback          = null;
-        $pinned_ip             = function_exists('curl_init') ? $this->pick_pinned_ip($host) : null;
+        $can_pin               = function_exists('curl_init') && class_exists(Curl_Dns_Pin::class);
+        $pinned_ip             = $can_pin ? $this->pick_pinned_ip($host) : null;
 
         if (null !== $pinned_ip) {
             $port         = (int) (wp_parse_url($url, PHP_URL_PORT) ?: ('https' === wp_parse_url($url, PHP_URL_SCHEME) ? 443 : 80));
             $resolve_entry = $this->build_curl_resolve_entry($host, $port, $pinned_ip);
-            $pin_callback  = static function ($handle) use ($resolve_entry) {
-                curl_setopt($handle, CURLOPT_RESOLVE, [$resolve_entry]);
-                return $handle;
-            };
+            $pin_callback  = Curl_Dns_Pin::filter($resolve_entry);
             add_filter('http_api_curl', $pin_callback);
             $this->last_pinned_ip = $pinned_ip;
         }

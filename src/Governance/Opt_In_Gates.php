@@ -42,6 +42,12 @@ class Opt_In_Gates
     {
         return [
             'wpmcp/run-wp-cli'      => ['filter' => 'wpmcp_allow_wp_cli', 'is_open' => [Wp_Cli_Guard::class, 'is_enabled']],
+            // The async dispatcher (issue #84) reaches the same executor
+            // through the same guard chain, so it is the same gate. Its
+            // poll/list/cancel siblings only read and transition job
+            // records and are deliberately NOT listed: they cannot run a
+            // command, and marking them dangerous would blunt the warning.
+            'wpmcp/dispatch-cli-job' => ['filter' => 'wpmcp_allow_wp_cli', 'is_open' => [Wp_Cli_Guard::class, 'is_enabled']],
             'wpmcp/run-php-snippet' => ['filter' => 'wpmcp_allow_php_exec', 'is_open' => [Php_Snippet_Guard::class, 'is_enabled']],
             'wpmcp/insert-row'      => ['filter' => 'wpmcp_enable_db_writes', 'is_open' => [Insert_Row::class, 'is_enabled']],
             'wpmcp/update-rows'     => ['filter' => 'wpmcp_enable_db_writes', 'is_open' => [Update_Rows::class, 'is_enabled']],

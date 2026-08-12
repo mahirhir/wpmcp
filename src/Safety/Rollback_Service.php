@@ -405,6 +405,11 @@ class Rollback_Service
             return;
         }
 
+        if ('elementor_global_classes' === $snapshot['object_type']) {
+            self::apply_elementor_global_classes_snapshot($snapshot);
+            return;
+        }
+
         if ('post' !== $snapshot['object_type']) {
             return;
         }
@@ -644,6 +649,44 @@ class Rollback_Service
         }
 
         wp_delete_attachment($media_id, true);
+    }
+
+    /**
+     * Undo an Elementor v4 global classes write (issue #132: create / update /
+     * delete / reorder a Class Manager entry).
+     *
+     * Unlike every other Elementor edit, the class set is not a single post:
+     * since Elementor 4.2 each class is its own post while order and labels
+     * live on the kit, so the snapshot captures the WHOLE prior class set
+     * (items + order) and the undo replays it through Elementor's repository,
+     * which computes the create/update/delete diff. That restores an edited
+     * class, resurrects a deleted one and puts the order back in a single
+     * step.
+     *
+     * The repository call is made here rather than through the Elementor tool
+     * layer on purpose: the safety layer must be able to restore without
+     * depending on the tool that wrote. If Elementor is no longer present the
+     * snapshot cannot be applied, which is warned about rather than silently
+     * treated as a successful rollback.
+     */
+    private static function apply_elementor_global_classes_snapshot(array $snapshot): void
+    {
+        $data       = (array) ($snapshot['data'] ?? []);
+        $repository = '\\Elementor\\Modules\\GlobalClasses\\Global_Classes_Repository';
+
+        if (! class_exists($repository) || ! is_callable([$repository, 'make'])) {
+            self::warn('Elementor global classes cannot be restored: Elementor 4.0+ is no longer available on this site.');
+            return;
+        }
+
+        $items = is_array($data['items'] ?? null) ? $data['items'] : [];
+        $order = is_array($data['order'] ?? null) ? array_values($data['order']) : [];
+
+        try {
+            call_user_func([$repository, 'make'])->put($items, $order);
+        } catch (\Throwable $e) {
+            self::warn('Elementor refused the global classes restore: ' . $e->getMessage());
+        }
     }
 
     /** Human-readable "pk=value" description of a row's primary-key values, for warnings and errors. */

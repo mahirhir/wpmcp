@@ -44,13 +44,24 @@ class Update_Atomic_Widget
             return new \WP_Error('missing_settings', 'Provide params (for a known atomic type) or raw settings to update.');
         }
 
-        Elementor_Page_Data::update_settings($elements, $element_id, $patch);
+        // Same shared mapper as add-atomic-widget and the builder dialect of
+        // build-page, so a patch cannot introduce a prop shape the v4 editor
+        // refuses to read (issue #137).
+        $mapped = Atomic_Props::map((string) ($element['widgetType'] ?? ''), $patch);
+        if ([] === $mapped['settings']) {
+            return new \WP_Error(
+                'unmappable_settings',
+                'None of the supplied props could be stored on this element: ' . implode(' ', $mapped['warnings'])
+            );
+        }
+
+        Elementor_Page_Data::update_settings($elements, $element_id, $mapped['settings']);
 
         $out = Atomic_Element::write($post_id, $elements, 'update-atomic-widget', $args);
         if (is_wp_error($out)) {
             return $out;
         }
 
-        return $out + ['element_id' => $element_id];
+        return $out + ['element_id' => $element_id] + Atomic_Element::report($mapped);
     }
 }

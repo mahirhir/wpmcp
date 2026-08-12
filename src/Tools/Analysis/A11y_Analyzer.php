@@ -18,8 +18,13 @@ if (! defined('ABSPATH')) {
  */
 class A11y_Analyzer
 {
-    /** Link phrases that convey no destination out of context. */
-    private const NON_DESCRIPTIVE_LINKS = [
+    /**
+     * Link phrases that convey no destination out of context. Public because
+     * Fix_Link_Text rewrites exactly the phrases this audit flags: one list
+     * means the fixer and the audit can never disagree about what counts as a
+     * problem.
+     */
+    public const NON_DESCRIPTIVE_LINKS = [
         'click here',
         'here',
         'read more',

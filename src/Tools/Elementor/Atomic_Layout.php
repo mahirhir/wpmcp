@@ -23,7 +23,8 @@ class Atomic_Layout
         [$post_id, $elements] = $read;
 
         $settings = is_array($args['settings'] ?? null) ? $args['settings'] : [];
-        $element  = Atomic_Element::container($el_type, $settings);
+        $mapped   = Atomic_Props::map($el_type, $settings);
+        $element  = Atomic_Element::container($el_type, $mapped['settings']);
 
         $parent_id = (string) ($args['parent_id'] ?? '');
         $position  = isset($args['position']) ? (int) $args['position'] : null;
@@ -37,6 +38,6 @@ class Atomic_Layout
             return $out;
         }
 
-        return $out + ['element_id' => $element['id'], 'elType' => $el_type];
+        return $out + ['element_id' => $element['id'], 'elType' => $el_type] + Atomic_Element::report($mapped);
     }
 }
