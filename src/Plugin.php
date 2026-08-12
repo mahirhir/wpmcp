@@ -102,6 +102,9 @@ use WPMCP\Tools\Media\Stock\Import_Stock_Image;
 use WPMCP\Tools\Media\Stock\Insert_Stock_Image;
 use WPMCP\Tools\Settings\Get_Settings;
 use WPMCP\Tools\Settings\Update_Settings;
+use WPMCP\Tools\Search\Search_Content;
+use WPMCP\Tools\Search\Reindex_Search;
+use WPMCP\Tools\Search\Index_Hooks;
 use WPMCP\Tools\Users\List_Users;
 use WPMCP\Tools\Users\Get_User;
 use WPMCP\Tools\Users\Create_User;
@@ -334,6 +337,13 @@ final class Plugin
         if ($this->group_enabled('block_builder')) {
             add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Spec_Store', 'ensure_post_type'], 5);
             add_action('init', ['\\WPMCP\\Tools\\BlockBuilder\\Block_Registry', 'register'], 20);
+        }
+        // Content search index (issue #83): keep it correct incrementally on
+        // every save/delete so search-content never reads stale copy. Gated
+        // with its ability group so a flavor that drops the group also drops
+        // the indexing cost.
+        if ($this->group_enabled('search')) {
+            (new Index_Hooks())->register();
         }
     }
     public function boot(): void
@@ -1850,6 +1860,7 @@ final class Plugin
             'widget_builder' => fn () => $this->register_widget_builder_abilities($registrar),
             'block_builder'  => fn () => $this->register_block_builder_abilities($registrar),
             'cloud'          => fn () => $this->register_cloud_abilities($registrar),
+            'search'         => fn () => $this->register_search_abilities($registrar),
         ];
         foreach ($groups as $group => $register) {
             if ($this->group_enabled($group)) {
@@ -1889,6 +1900,75 @@ final class Plugin
                 $op
             ));
         }
+    }
+
+    /**
+     * Site content search index (issue #83). Two free abilities over a
+     * materialized index table: `search-content` (read) and `reindex-search`
+     * (rebuild).
+     *
+     * Free tier, because "where does this text live?" is orientation, the same
+     * class of question as get-site-context and list-posts, not deep analysis.
+     *
+     * Capabilities are deliberately split. `search-content` is gated at
+     * edit_posts, the standard content-read bar in this codebase, and then
+     * re-checks `read_post` PER RESULT so the index can never surface a
+     * non-published post the caller could not have read directly.
+     * `reindex-search` is gated at manage_options: a full rebuild walks every
+     * post on the site, which is a site-maintenance cost, not a content edit.
+     *
+     * Neither tool touches Safe_Mutation. The index is derived state that
+     * reindex-search reconstructs from posts, postmeta, and menus, so a
+     * snapshot of it would protect nothing that is not already recoverable in
+     * one call.
+     */
+    private function register_search_abilities(Registrar $registrar): void
+    {
+        $search_content = new Search_Content();
+        $reindex_search = new Reindex_Search();
+
+        $registrar->register(new Ability(
+            'wpmcp/search-content',
+            'free',
+            'Search ALL of the site\'s text at once, including copy that post_content search cannot see: Elementor and Bricks element settings, Gutenberg block attributes, template parts, reusable blocks, and nav menus. Every hit returns an addressable location (block path, element id, or menu item id) plus a snippet, so the follow-up edit needs no discovery pass. Read-only; results are re-checked against the caller\'s read_post capability. Run reindex-search once if the index is empty',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'query'           => [ 'type' => 'string' ],
+                    'post_types'      => [ 'type' => 'array', 'items' => [ 'type' => 'string' ] ],
+                    'sources'         => [ 'type' => 'array', 'items' => [ 'type' => 'string' ] ],
+                    'object_types'    => [ 'type' => 'array', 'items' => [ 'type' => 'string' ] ],
+                    'limit'           => [ 'type' => 'integer' ],
+                    'offset'          => [ 'type' => 'integer' ],
+                    'hits_per_result' => [ 'type' => 'integer' ],
+                ],
+                'required'   => [ 'query' ],
+            ],
+            [$search_content, 'handle'],
+            'edit_posts',
+            'content',
+            'read'
+        ));
+
+        $registrar->register(new Ability(
+            'wpmcp/reindex-search',
+            'free',
+            'Build or rebuild the content search index that search-content reads. The index is maintained incrementally on every save, so this is only needed for the first build or a deliberate full refresh (bulk import, migration, builder data changed outside WordPress). Cursor-based: each call indexes at most batch_size posts and returns next_offset, so large sites rebuild across bounded calls instead of one request that times out',
+            [
+                'type'       => 'object',
+                'properties' => [
+                    'post_types'    => [ 'type' => 'array', 'items' => [ 'type' => 'string' ] ],
+                    'include_menus' => [ 'type' => 'boolean' ],
+                    'full'          => [ 'type' => 'boolean' ],
+                    'batch_size'    => [ 'type' => 'integer' ],
+                    'offset'        => [ 'type' => 'integer' ],
+                ],
+            ],
+            [$reindex_search, 'handle'],
+            'manage_options',
+            'content',
+            'update'
+        ));
     }
 
     /**
