@@ -177,6 +177,73 @@ class SecurityRulesTest extends Compliance_Test_Case
         $this->assertStringNotContainsString('Admin_Screen', implode("\n", $this->messages($findings)));
     }
 
+    /**
+     * PHPCS honours a justified phpcs:ignore, and so does Plugin Check, so a
+     * rule that mirrors a sniff has to honour it too. Binary output is the
+     * case that forces the issue: every escaper on the list would corrupt it,
+     * and this rule's own message tells you to annotate rather than escape.
+     */
+    public function test_a_justified_phpcs_ignore_suppresses_an_escaping_finding(): void
+    {
+        $body = "<?php\nif ( ! defined( 'ABSPATH' ) ) { exit; }\nfunction example_download( \$bundle ) {\n";
+        $body .= "    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- binary body sent as octet-stream.\n";
+        $body .= "    echo \$bundle;\n}\n";
+
+        $findings = $this->findings(new Output_Escaping_Rule(), [
+            'example-toolkit.php' => $this->main_file(),
+            'includes/download.php' => $body,
+        ]);
+
+        $this->assert_clean($findings);
+    }
+
+    /**
+     * The annotation is a record, not a mute button. WordPressCS requires the
+     * "--" justification and so does this: without one, the finding stands.
+     */
+    public function test_a_bare_phpcs_ignore_suppresses_nothing(): void
+    {
+        $body = "<?php\nif ( ! defined( 'ABSPATH' ) ) { exit; }\nfunction example_download( \$bundle ) {\n";
+        $body .= "    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped\n";
+        $body .= "    echo \$bundle;\n}\n";
+
+        $findings = $this->findings(new Output_Escaping_Rule(), [
+            'example-toolkit.php' => $this->main_file(),
+            'includes/download.php' => $body,
+        ]);
+
+        $this->assert_reports($findings, 'no escaping function or integer cast');
+    }
+
+    /** An annotation for a different sniff must not suppress this one. */
+    public function test_a_phpcs_ignore_for_another_sniff_suppresses_nothing(): void
+    {
+        $body = "<?php\nif ( ! defined( 'ABSPATH' ) ) { exit; }\nfunction example_download( \$bundle ) {\n";
+        $body .= "    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- unrelated.\n";
+        $body .= "    echo \$bundle;\n}\n";
+
+        $findings = $this->findings(new Output_Escaping_Rule(), [
+            'example-toolkit.php' => $this->main_file(),
+            'includes/download.php' => $body,
+        ]);
+
+        $this->assert_reports($findings, 'no escaping function or integer cast');
+    }
+
+    public function test_a_justified_phpcs_ignore_suppresses_a_sanitization_finding(): void
+    {
+        $body = "<?php\nif ( ! defined( 'ABSPATH' ) ) { exit; }\nfunction example_page() {\n";
+        $body .= "    // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- nonce and capability are verified by the caller.\n";
+        $body .= "    return \$_POST;\n}\n";
+
+        $findings = $this->findings(new Input_Sanitization_Rule(), [
+            'example-toolkit.php' => $this->main_file(),
+            'includes/handler.php' => $body,
+        ]);
+
+        $this->assert_clean($findings);
+    }
+
     public function test_unsanitized_superglobal_read_is_reported(): void
     {
         $findings = $this->findings(new Input_Sanitization_Rule(), [

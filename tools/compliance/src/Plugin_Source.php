@@ -22,6 +22,10 @@ final class Plugin_Source
         'vendor',
         'node_modules',
         'dist',
+        // Where scripts/build-wporg-release.sh unpacks the zip it just built,
+        // so it can scan it. Left in place after a build; scanning it as part
+        // of the checkout would report the artifact's findings twice.
+        'build',
         'coverage',
         'tests',
         'tools',

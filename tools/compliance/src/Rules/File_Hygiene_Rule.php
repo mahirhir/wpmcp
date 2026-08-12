@@ -39,7 +39,7 @@ final class File_Hygiene_Rule extends Base_Rule
      * strict list applies; flagging them in a source tree only trains people
      * to ignore the rule.
      */
-    private const DEV_ROOT_MARKDOWN_ALLOWLIST = ['COMPLIANCE.md', 'CODE_OF_CONDUCT.md'];
+    private const DEV_ROOT_MARKDOWN_ALLOWLIST = ['COMPLIANCE.md', 'CODE_OF_CONDUCT.md', 'WPORG-SUBMISSION.md'];
 
     private const UNNEEDED_DIRECTORIES = ['tests', 'test', 'node_modules', '.github', 'bower_components'];
 

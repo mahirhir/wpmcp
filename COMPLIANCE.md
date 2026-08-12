@@ -255,7 +255,7 @@ php tools/compliance/bin/compliance.php --profile=wporg-free --no-artifact --for
 Against the built zip, which is the run that matters for submission:
 
 ```bash
-bash scripts/build-release.sh
+bash scripts/build-wporg-release.sh
 rm -rf build/wporg && mkdir -p build/wporg
 unzip -q dist/wpmcp-*.zip -d build/wporg
 php tools/compliance/bin/compliance.php --profile=wporg-free --artifact --path=build/wporg/wpmcp

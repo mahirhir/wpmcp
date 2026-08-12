@@ -26,7 +26,8 @@
     "manifest:regenerate": "WPMCP_REGENERATE_MANIFEST=1 phpunit --filter AbilityManifestTest",
     "lint": "phpcs -q",
     "compliance": "php tools/compliance/bin/compliance.php --profile=distribution",
-    "compliance:wporg": "php tools/compliance/bin/compliance.php --profile=wporg-free --no-artifact"
+    "compliance:wporg": "php tools/compliance/bin/compliance.php --profile=wporg-free --no-artifact",
+    "build:wporg": "bash scripts/build-wporg-release.sh"
   },
   "config": {
     "allow-plugins": { "*": true },

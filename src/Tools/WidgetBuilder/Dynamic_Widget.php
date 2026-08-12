@@ -94,6 +94,7 @@ if (class_exists('\\Elementor\\Widget_Base')) {
             if ([] === $spec) {
                 return;
             }
+            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Widget_Renderer::render() escapes every interpolated value by control type; see Widget_Renderer::render().
             echo Widget_Renderer::render($spec, (array) $this->get_settings_for_display());
         }
 

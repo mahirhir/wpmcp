@@ -21,9 +21,12 @@ php tools/compliance/bin/compliance.php --help
 php tools/compliance/bin/compliance.php --list-rules
 php tools/compliance/bin/compliance.php --explain=WPORG-05-TRIALWARE
 
-# what CI does with the built free zip
-bash scripts/build-release.sh
-unzip -q dist/wpmcp-*.zip -d build/wporg
+# what CI does with the directory build: build-wporg-release.sh strips the
+# paid tier, packages the zip, unpacks it and runs the line below as its own
+# final gate, so this is one command
+composer build:wporg
+
+# or by hand, against any extracted zip
 php tools/compliance/bin/compliance.php \
   --profile=wporg-free --artifact --path=build/wporg/wpmcp
 ```

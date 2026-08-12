@@ -46,13 +46,17 @@ jobs:
           path: coverage/
 
   # wp.org compliance. Two runs: the source tree under the distribution
-  # profile, and the built free zip under the strict wporg-free profile,
+  # profile, and the directory build under the strict wporg-free profile,
   # which is the artifact the directory would actually receive.
   #
-  # The two check steps are continue-on-error until the known violations are
-  # fixed (paid gating, undisclosed external services, the two execution
-  # sites). Deleting those two lines is what turns this job into a gate; the
-  # engine already exits non-zero on any blocker.
+  # The distribution run stays advisory: that zip is sold off-directory, where
+  # licensing and the two guarded execution sites are permitted, and the
+  # profile already downgrades everything that is only a problem because
+  # WordPress.org says so.
+  #
+  # The wporg-free run is a hard gate. scripts/build-wporg-release.sh runs the
+  # engine itself as its last step, so this job fails if the directory build
+  # ever regains a blocker.
   compliance:
     runs-on: ubuntu-latest
     steps:
@@ -63,15 +67,8 @@ jobs:
       - name: Compliance, distribution profile (source tree)
         continue-on-error: true
         run: composer compliance
-      - name: Build the free zip
-        run: bash scripts/build-release.sh
-      - name: Unpack the built zip
-        run: |
-          mkdir -p build/wporg
-          unzip -q dist/wpmcp-*.zip -d build/wporg
-      - name: Compliance, wporg-free profile (built zip)
-        continue-on-error: true
-        run: php tools/compliance/bin/compliance.php --profile=wporg-free --artifact --path=build/wporg/wpmcp
+      - name: Build the directory zip and gate it
+        run: bash scripts/build-wporg-release.sh
       - name: Compliance report (markdown)
         if: always()
         run: |

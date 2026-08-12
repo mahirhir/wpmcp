@@ -56,6 +56,9 @@ final class Input_Sanitization_Rule extends Base_Rule
                 if ($this->is_handled($hit['text'])) {
                     continue;
                 }
+                if ($file->has_phpcs_ignore($hit['line'], 'WordPress.Security.ValidatedSanitizedInput')) {
+                    continue;
+                }
                 $findings[] = $this->finding(
                     $file,
                     $hit['line'],

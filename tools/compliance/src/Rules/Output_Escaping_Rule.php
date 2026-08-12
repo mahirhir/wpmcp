@@ -62,6 +62,13 @@ final class Output_Escaping_Rule extends Base_Rule
                 if ($this->is_escaped($statement['text'])) {
                     continue;
                 }
+                // PHPCS honours a justified phpcs:ignore and so does Plugin
+                // Check. Binary output and already-escaped renderer results
+                // have no second escaper that would not corrupt them, and
+                // this rule's own message says the fix is the annotation.
+                if ($file->has_phpcs_ignore($statement['line'], 'WordPress.Security.EscapeOutput')) {
+                    continue;
+                }
                 // Plugin Check reports this either way (it does not follow
                 // calls), so the finding stands. But claiming "no escaping
                 // function" is wrong when the output comes from a renderer in

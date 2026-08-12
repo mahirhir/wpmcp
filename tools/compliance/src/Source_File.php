@@ -72,6 +72,44 @@ final class Source_File
     }
 
     /**
+     * True when $number carries a justified phpcs:ignore for $sniff, either
+     * on the line itself or on the line immediately above it.
+     *
+     * PHPCS, and therefore Plugin Check, honours these annotations, so a rule
+     * that mirrors a sniff has to honour them too or it contradicts its own
+     * remediation advice. WordPressCS requires a justification after "--";
+     * a bare "phpcs:ignore" suppresses nothing here, which keeps the
+     * annotation from becoming a silent mute button.
+     *
+     * @param string $sniff sniff code, or a prefix of one
+     */
+    public function has_phpcs_ignore(int $number, string $sniff): bool
+    {
+        foreach ([$number, $number - 1] as $candidate) {
+            $text = $this->line($candidate);
+            if (! preg_match('/phpcs:ignore\s+([^-\n]*?)\s*--\s*(\S.*)$/', $text, $matches)) {
+                continue;
+            }
+            if ('' === trim($matches[2])) {
+                continue;
+            }
+            foreach (preg_split('/\s*,\s*/', trim($matches[1])) ?: [] as $code) {
+                // PHPCS matches an annotation against a sniff by prefix, so
+                // "WordPress.Security" suppresses every code under it. The
+                // rule may pass either the sniff or a partial name, so a
+                // prefix in either direction counts.
+                if ('' === $code) {
+                    continue;
+                }
+                if (str_starts_with($sniff, $code) || str_starts_with($code, $sniff)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * A trimmed, length-capped copy of a line, for the evidence column.
      */
     public function snippet(int $number, int $max = 120): string
