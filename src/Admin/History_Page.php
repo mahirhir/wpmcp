@@ -10,6 +10,17 @@ if (! defined('ABSPATH')) {
 
 class History_Page
 {
+    /**
+     * DOM id for one operation's row, so another screen can deep-link
+     * straight to its undo point (the Requests tab on Audit_Log_Page does
+     * this for rows that took a snapshot, issue #134). Sanitized because it
+     * lands in an id attribute and a URL fragment.
+     */
+    public static function row_anchor(string $operation_id): string
+    {
+        return 'wpmcp-op-' . preg_replace('/[^A-Za-z0-9_-]/', '', $operation_id);
+    }
+
     public function render(): void
     {
         $ops = (new List_Operations())->handle(['limit' => 50])['operations'];
@@ -17,7 +28,8 @@ class History_Page
         $nonce = wp_create_nonce('wpmcp_restore');
         foreach ($ops as $op) {
             printf(
-                '<tr><td>%s</td><td>#%d</td><td>%s</td><td><button class="button wpmcp-restore" data-op="%s" data-nonce="%s">%s</button></td></tr>',
+                '<tr id="%s"><td>%s</td><td>#%d</td><td>%s</td><td><button class="button wpmcp-restore" data-op="%s" data-nonce="%s">%s</button></td></tr>',
+                esc_attr(self::row_anchor((string) $op['operation_id'])),
                 esc_html($op['tool_name']),
                 (int) $op['object_id'],
                 esc_html($op['created_at']),

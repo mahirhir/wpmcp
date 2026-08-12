@@ -119,10 +119,29 @@ class File_Backup
         foreach (array_diff((array) scandir($dir), ['.', '..']) as $entry) {
             $path = $dir . '/' . $entry;
             if (is_file($path)) {
-                unlink($path);
+                wp_delete_file($path);
             }
         }
-        rmdir($dir);
+        self::filesystem()->rmdir($dir);
+    }
+
+    /**
+     * The WP_Filesystem instance, initialised on first use.
+     *
+     * Plugin Check promotes WordPress.WP.AlternativeFunctions to an error, so
+     * directory removal has to go through WP_Filesystem rather than rmdir().
+     * Booted with the direct method: this only ever touches the plugin's own
+     * backup directory under wp-content/uploads, and prompting for FTP
+     * credentials from a tool call is not an option.
+     */
+    private static function filesystem(): \WP_Filesystem_Base
+    {
+        global $wp_filesystem;
+        if (! $wp_filesystem instanceof \WP_Filesystem_Base) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            WP_Filesystem();
+        }
+        return $wp_filesystem;
     }
 
     /** Block direct web access to a backup directory (deny + empty index). */

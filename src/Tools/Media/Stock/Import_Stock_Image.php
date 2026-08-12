@@ -60,7 +60,7 @@ class Import_Stock_Image
             $media_id = (int) $media_id;
         } catch (\Throwable $e) {
             if (is_file($tmp)) {
-                @unlink($tmp); // phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
+                wp_delete_file($tmp);
             }
             throw $e;
         }

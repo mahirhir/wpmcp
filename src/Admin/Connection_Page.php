@@ -193,12 +193,19 @@ class Connection_Page
             return null;
         }
 
+        // readfile() is an error under WordPress.WP.AlternativeFunctions;
+        // file_get_contents() is one of the three names the Plugin Check
+        // review ruleset excludes from it. The bundle is a few kilobytes of
+        // generated JSON, so reading it into memory costs nothing.
+        $bundle = (string) file_get_contents($path);
+        wp_delete_file($path);
+
         nocache_headers();
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename="wpmcp.mcpb"');
-        header('Content-Length: ' . (string) filesize($path));
-        readfile($path);
-        unlink($path);
+        header('Content-Length: ' . (string) strlen($bundle));
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- binary .mcpb body sent as application/octet-stream; any escaper would corrupt it.
+        echo $bundle;
         exit;
     }
 
