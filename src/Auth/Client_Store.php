@@ -22,8 +22,17 @@ if (! defined('ABSPATH')) {
  *    flood (even one that gets past Client_Registration's rate limit) cannot
  *    grow the store without bound.
  *
+ * Issue #133 adds the two pieces of housekeeping that cap needs to stay
+ * survivable in production: registration dedup (MCP clients re-run DCR on
+ * every connect, so without it the cap is reached by dead rows from one
+ * legitimate user reconnecting) and an orphan sweep (Client_Store::gc(),
+ * driven by Oauth_Gc). Both are documented in detail at their call sites
+ * below; the security-relevant part of dedup is that the fingerprint is
+ * bound to the registering caller, because reuse rotates the secret.
+ *
  * A record is { client_id, client_secret_hash, client_name, redirect_uris,
- * created_at }.
+ * created_at, fingerprint }, plus reused_at once a registration has been
+ * deduped onto it.
  */
 class Client_Store
 {
@@ -67,9 +76,27 @@ class Client_Store
      *
      * @throws \RuntimeException When the client cap (MAX_CLIENTS) is reached.
      */
-    public static function create(array $client_name, array $redirect_uris): array
+    public static function create(array $client_name, array $redirect_uris, string $registrar_key = ''): array
     {
         $stored = self::load();
+        $name   = (string) ($client_name[0] ?? '');
+        $uris   = array_values(array_unique(array_map('strval', $redirect_uris)));
+
+        $fingerprint = self::registration_fingerprint($name, $uris, $registrar_key);
+        $existing    = self::find_reusable($stored, $fingerprint);
+
+        if (null !== $existing) {
+            $client_secret = self::generate_token('secret_');
+
+            $stored[ $existing ]['client_secret_hash'] = self::hash($client_secret);
+            $stored[ $existing ]['reused_at']          = time();
+            self::save($stored);
+
+            return [
+                'client_id'     => $existing,
+                'client_secret' => $client_secret,
+            ];
+        }
 
         if (count($stored) >= self::max_clients()) {
             throw new \RuntimeException('OAuth client registration cap reached.');
@@ -81,9 +108,10 @@ class Client_Store
         $stored[ $client_id ] = [
             'client_id'          => $client_id,
             'client_secret_hash' => self::hash($client_secret),
-            'client_name'        => $client_name[0] ?? '',
-            'redirect_uris'      => array_values($redirect_uris),
+            'client_name'        => $name,
+            'redirect_uris'      => $uris,
             'created_at'         => time(),
+            'fingerprint'        => $fingerprint,
         ];
 
         self::save($stored);
@@ -92,6 +120,102 @@ class Client_Store
             'client_id'     => $client_id,
             'client_secret' => $client_secret,
         ];
+    }
+
+    /**
+     * The dedup key for a registration request (issue #133).
+     *
+     * MCP clients re-run Dynamic Client Registration on every connect, so
+     * without dedup the client store fills with one dead row per connect
+     * until MAX_CLIENTS is hit and registration starts failing outright --
+     * i.e. the site eventually refuses new connections because of its own
+     * bookkeeping.
+     *
+     * The caller key (the remote IP, as passed down from the registration
+     * endpoint) is part of the fingerprint on purpose, and this is where we
+     * diverge from the implementation we studied. Theirs dedupes on name
+     * plus redirect URIs alone, which is safe for it because its clients
+     * are public PKCE clients with no secret to hand back. Ours are
+     * confidential clients: reusing a row means minting a fresh secret for
+     * an existing client_id, so deduping on publicly guessable metadata
+     * alone would let any anonymous caller rotate another client's secret
+     * and break its next token exchange. Binding the fingerprint to the
+     * registering caller closes that, and the fallback when the caller key
+     * differs is simply today's behaviour (a brand new client row).
+     */
+    private static function registration_fingerprint(string $name, array $uris, string $registrar_key): string
+    {
+        $sorted = $uris;
+        sort($sorted);
+
+        return hash('sha256', $name . "\n" . implode("\n", $sorted) . "\n" . $registrar_key);
+    }
+
+    /**
+     * The client_id of an existing row this registration may reuse, or null.
+     *
+     * Reuse additionally requires the candidate to hold no tokens at all.
+     * A client with a live access or refresh token is a working connection,
+     * and rotating its secret out from under it would break the next
+     * refresh; only never-completed or fully-lapsed registrations are
+     * recycled.
+     */
+    private static function find_reusable(array $stored, string $fingerprint): ?string
+    {
+        foreach ($stored as $client_id => $record) {
+            if ((string) ($record['fingerprint'] ?? '') !== $fingerprint) {
+                continue;
+            }
+            $client_id = (string) $client_id;
+            if (Token_Store::has_tokens_for_client($client_id)) {
+                continue;
+            }
+            if (Refresh_Token_Store::has_tokens_for_client($client_id)) {
+                continue;
+            }
+
+            return $client_id;
+        }
+
+        return null;
+    }
+
+    /**
+     * Delete orphan client rows: registrations older than $grace seconds
+     * that never produced (or no longer hold) a single token. A
+     * just-registered client is protected for the whole grace window so a
+     * user who is still sitting on the consent screen is never reaped
+     * mid-flow.
+     *
+     * @return int Number of clients removed.
+     */
+    public static function gc(int $grace, ?int $now = null): int
+    {
+        $now     = null === $now ? time() : $now;
+        $stored  = self::load();
+        $removed = 0;
+
+        foreach ($stored as $client_id => $record) {
+            $client_id = (string) $client_id;
+            if ((int) ($record['created_at'] ?? 0) > $now - $grace) {
+                continue;
+            }
+            if (Token_Store::has_tokens_for_client($client_id)) {
+                continue;
+            }
+            if (Refresh_Token_Store::has_tokens_for_client($client_id)) {
+                continue;
+            }
+
+            unset($stored[ $client_id ]);
+            $removed++;
+        }
+
+        if ($removed > 0) {
+            self::save($stored);
+        }
+
+        return $removed;
     }
 
     /** Fetch a client's stored record (never includes the plaintext secret), or null. */
