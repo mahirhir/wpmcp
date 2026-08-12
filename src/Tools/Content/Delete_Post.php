@@ -3,6 +3,7 @@
 namespace WPMCP\Tools\Content;
 
 use WPMCP\Safety\Safe_Mutation;
+use WPMCP\Tools\Redirects\Redirect_Suggestions;
 
 if (! defined('ABSPATH')) {
     exit;
@@ -29,6 +30,43 @@ class Delete_Post
      * nothing. Force-delete permanently destroys the post, so that branch IS
      * safe-wrapped for a rollback-able snapshot.
      */
+    /**
+     * The URL this post lives at right now, but only when losing it would
+     * actually break a link: an unpublished post has no public URL, so there
+     * is nothing to suggest a redirect for.
+     */
+    private function public_url(\WP_Post $post): string
+    {
+        if ('publish' !== $post->post_status) {
+            return '';
+        }
+        $permalink = get_permalink($post->ID);
+        return is_string($permalink) ? $permalink : '';
+    }
+
+    /**
+     * Queue (and return) a suggestion that the deleted post's URL be
+     * redirected somewhere. SUGGESTION ONLY: nothing here creates a redirect.
+     * The caller decides where the URL should now point and makes an explicit
+     * create-redirect call, or a human approves it on the Redirects screen.
+     * Silently produces nothing when the URL is already redirected.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function suggest_redirect(string $url, \WP_Post $post): ?array
+    {
+        if ('' === $url) {
+            return null;
+        }
+
+        return Redirect_Suggestions::propose(
+            $url,
+            Redirect_Suggestions::REASON_POST_DELETED,
+            0,
+            sprintf('"%s" was deleted; choose where its URL should go.', $post->post_title)
+        );
+    }
+
     public function handle(array $args): array
     {
         $post_id = (int) ($args['post_id'] ?? 0);
@@ -37,11 +75,17 @@ class Delete_Post
             throw new \InvalidArgumentException('Post not found');
         }
 
-        $force = ! empty($args['force']);
+        $force    = ! empty($args['force']);
+        $lost_url = $this->public_url($post);
 
         if (! $force) {
             wp_trash_post($post_id);
-            return ['post_id' => $post_id, 'deleted' => 'trashed'];
+            $result = ['post_id' => $post_id, 'deleted' => 'trashed'];
+            $suggestion = $this->suggest_redirect($lost_url, $post);
+            if (null !== $suggestion) {
+                $result['suggested_redirect'] = $suggestion;
+            }
+            return $result;
         }
 
         if (! self::is_force_enabled()) {
@@ -65,6 +109,12 @@ class Delete_Post
             }
         );
 
-        return ['operation_id' => $out['operation_id'], 'post_id' => $post_id, 'deleted' => 'deleted'];
+        $result     = ['operation_id' => $out['operation_id'], 'post_id' => $post_id, 'deleted' => 'deleted'];
+        $suggestion = $this->suggest_redirect($lost_url, $post);
+        if (null !== $suggestion) {
+            $result['suggested_redirect'] = $suggestion;
+        }
+
+        return $result;
     }
 }

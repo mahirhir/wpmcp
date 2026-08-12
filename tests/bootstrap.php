@@ -40,6 +40,12 @@ tests_add_filter( 'muplugins_loaded', function () {
     $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wpmcp_snapshots" );
     \WPMCP\Safety\Snapshot_Store::install();
 
+    // Same DDL-commits-the-transaction reasoning for the managed redirects
+    // table (issue #128): create it once here so no test's first write is
+    // also the first CREATE TABLE of the run.
+    $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wpmcp_redirects" );
+    \WPMCP\Tools\Redirects\Redirect_Store::install();
+
     // Same reasoning for the content search index table (issue #83): the
     // incremental indexer runs on save_post for the whole suite, so its table
     // must exist before any test transaction starts. Creating it lazily inside

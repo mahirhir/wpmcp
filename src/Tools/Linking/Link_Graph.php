@@ -77,17 +77,9 @@ class Link_Graph
      */
     private static function resolve_targets(string $content, int $self_id): array
     {
-        if ('' === $content || false === strpos($content, 'href')) {
-            return [];
-        }
-
-        if (! preg_match_all('/<a\b[^>]*\bhref\s*=\s*["\']([^"\']+)["\']/i', $content, $matches)) {
-            return [];
-        }
-
         $ids = [];
-        foreach ($matches[1] as $href) {
-            $id = self::resolve_href((string) $href);
+        foreach (self::extract_hrefs($content) as $href) {
+            $id = self::resolve_href($href);
             if ($id > 0 && $id !== $self_id) {
                 $ids[$id] = true;
             }
@@ -96,8 +88,35 @@ class Link_Graph
         return array_keys($ids);
     }
 
-    /** Resolve a single href to a local post ID, or 0 if it is not an internal post link. */
-    private static function resolve_href(string $href): int
+    /**
+     * Every <a href> value in a chunk of stored content, in document order.
+     *
+     * Public because the broken-link scanner (issue #128) needs the raw
+     * hrefs, not just the ones that resolve: an href that resolves to
+     * nothing is precisely what it is looking for. Keeping the extraction
+     * here means both features see exactly the same set of links.
+     *
+     * @return string[]
+     */
+    public static function extract_hrefs(string $content): array
+    {
+        if ('' === $content || false === strpos($content, 'href')) {
+            return [];
+        }
+
+        if (! preg_match_all('/<a\b[^>]*\bhref\s*=\s*["\']([^"\']+)["\']/i', $content, $matches)) {
+            return [];
+        }
+
+        return array_map('strval', $matches[1]);
+    }
+
+    /**
+     * Resolve a single href to a local post ID, or 0 if it is not an internal
+     * post link. Public for the same reason as extract_hrefs(): the
+     * broken-link scanner classifies a link by whether this resolves it.
+     */
+    public static function resolve_href(string $href): int
     {
         $href = trim($href);
         if ('' === $href || '#' === $href[0]) {
