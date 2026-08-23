@@ -15,8 +15,8 @@
  */
 
 return [
-    'total'     => 302,
-    'free'      => 211,
+    'total'     => 304,
+    'free'      => 213,
     'pro'       => 91,
     'abilities' => [
         'wpmcp/acf-read' => 'free',
@@ -69,6 +69,7 @@ return [
         'wpmcp/create-theme-template' => 'pro',
         'wpmcp/create-user' => 'free',
         'wpmcp/deactivate-plugin' => 'free',
+        'wpmcp/delete-backup-archive' => 'free',
         'wpmcp/delete-code-snippet' => 'pro',
         'wpmcp/delete-comment' => 'free',
         'wpmcp/delete-custom-block' => 'pro',
@@ -116,6 +117,7 @@ return [
         'wpmcp/generate-widget' => 'pro',
         'wpmcp/get-analytics-connection-status' => 'free',
         'wpmcp/get-analytics-summary' => 'free',
+        'wpmcp/get-backup-manifest' => 'free',
         'wpmcp/get-backup-status' => 'free',
         'wpmcp/get-block-type' => 'free',
         'wpmcp/get-brand-kit' => 'pro',
