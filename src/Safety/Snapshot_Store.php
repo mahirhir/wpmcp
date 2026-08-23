@@ -64,10 +64,24 @@ class Snapshot_Store
         return is_int($snapshot['object_id']) ? $snapshot['object_id'] : 0;
     }
 
+    /**
+     * Persist the undo point for one mutation.
+     *
+     * Raises rather than returning 0 on failure. The previous version
+     * ignored the insert's return value and handed back (int) $wpdb->insert_id,
+     * which is 0 when nothing was written — and Safe_Mutation read that as
+     * success and ran the write anyway. The result was a mutation that
+     * reported a real-looking operation_id while its snapshot row did not
+     * exist, so list-operations was empty and rollback quietly restored
+     * nothing. A backup that fails loudly is recoverable; one that fails
+     * silently is worse than none, because it is trusted.
+     *
+     * @throws Mutation_Failed When the snapshot row could not be written.
+     */
     public static function save(string $operation_id, string $session_id, array $snapshot, string $tool_name, string $args_hash): int
     {
         global $wpdb;
-        $wpdb->insert(self::table_name(), [
+        $written = $wpdb->insert(self::table_name(), [
             'operation_id' => $operation_id,
             'session_id'   => $session_id,
             'object_type'  => $snapshot['object_type'],
@@ -78,6 +92,14 @@ class Snapshot_Store
             'user_id'      => get_current_user_id(),
             'created_at'   => current_time('mysql', true),
         ]);
+
+        if (false === $written) {
+            throw new Mutation_Failed(
+                'The change was not made: its undo point could not be saved'
+                    . ($wpdb->last_error ? ' (' . $wpdb->last_error . ')' : '') . '.'
+            );
+        }
+
         return (int) $wpdb->insert_id;
     }
 

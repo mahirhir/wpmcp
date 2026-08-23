@@ -50,6 +50,13 @@ class Registrar
                 'category'            => 'wpmcp',
                 'input_schema'        => $a->input_schema,
                 'execute_callback'    => $this->throttled($a),
+                // Registration is not exposure. WP_Ability defaults
+                // show_in_rest to false, and core gates BOTH the abilities
+                // list controller and the run controller on it, so without
+                // this every tool here is invisible to discovery AND
+                // impossible to execute over REST/MCP. Asserted at the
+                // transport boundary by tests/free/Rest/AbilityRestExposureTest.php.
+                'meta'                => [ 'show_in_rest' => true ],
                 // The Abilities API hands the invocation input to the
                 // permission callback (WP_Ability::check_permissions($input)),
                 // which is what lets a project-memory rule targeting a post id

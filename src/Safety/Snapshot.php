@@ -359,13 +359,44 @@ class Snapshot
         return $terms;
     }
 
+    /**
+     * Base64 over the gzip, so the stored value is plain ASCII.
+     *
+     * The compression is worth keeping (snapshots of post_content are large
+     * and highly compressible), but the raw gzip bytes are not portable
+     * across database backends: WordPress's SQLite integration refuses a
+     * binary payload from $wpdb->insert() with "Processing the value for the
+     * following field failed", where MySQL's LONGBLOB accepts it. That split
+     * meant the safety net silently did not exist on SQLite-backed installs
+     * while every test on MySQL passed. Base64 costs ~33% of an already
+     * compressed payload and makes the column backend-agnostic.
+     */
     public static function serialize(array $before): string
     {
-        return gzencode(wp_json_encode($before));
+        return base64_encode(gzencode((string) wp_json_encode($before)));
     }
 
+    /**
+     * Accepts both encodings. Rows written before the base64 change hold raw
+     * gzip, and they are still the only undo point those sites have, so they
+     * must keep decoding: gzip's magic bytes (1f 8b) identify them
+     * unambiguously, and they are not valid base64 output.
+     */
     public static function unserialize(string $blob): array
     {
-        return json_decode(gzdecode($blob), true);
+        if (str_starts_with($blob, "\x1f\x8b")) {
+            $json = gzdecode($blob);
+        } else {
+            $decoded = base64_decode($blob, true);
+            $json    = false === $decoded ? false : gzdecode($decoded);
+        }
+
+        if (false === $json) {
+            return [];
+        }
+
+        $data = json_decode($json, true);
+
+        return is_array($data) ? $data : [];
     }
 }
