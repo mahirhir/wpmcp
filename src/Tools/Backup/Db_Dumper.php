@@ -21,6 +21,17 @@ if (! defined('ABSPATH')) {
  * hosts, and wp.org forbids shipping code that shells out to it, so the dump
  * is generated entirely through $wpdb.
  *
+ * KNOWN LIMIT, still open: tables are read one after another outside any
+ * enclosing transaction, so the archive is not a point-in-time snapshot of
+ * the whole database. A post written midway through a dump can land in
+ * wp_posts with its wp_postmeta already read, so the restore sees the post
+ * without its meta. Per-table reads are now stable under concurrent writes
+ * (see dump_table()'s keyset pagination), which is the larger half of the
+ * problem; closing the rest needs START TRANSACTION WITH CONSISTENT SNAPSHOT
+ * around the whole dump, which is InnoDB-specific and commits any
+ * transaction already open on the connection — so it needs its own change
+ * with its own tests rather than being smuggled in here.
+ *
  * KNOWN LIMIT, deliberately not papered over: values are emitted as escaped
  * string literals via $wpdb::prepare(). That round-trips every column type
  * WordPress core and the plugin ecosystem actually use (MySQL coerces the
@@ -137,19 +148,42 @@ class Db_Dumper
         $emit("DROP TABLE IF EXISTS {$quoted};\n");
         $emit($create[1] . ";\n\n");
 
+        $key    = $this->primary_key($table);
+        $order  = null !== $key ? '`' . str_replace('`', '``', $key) . '`' : $this->column_order($table);
         $offset = 0;
+        $cursor = null;
         $total  = 0;
         $buffer = '';
 
         while (true) {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Identifier interpolated from the validated table list; the LIMIT/OFFSET values are bound.
-            $rows = $wpdb->get_results(
-                $wpdb->prepare("SELECT * FROM {$quoted} LIMIT %d OFFSET %d", self::BATCH, $offset),
-                ARRAY_A
-            );
+            if (null !== $key) {
+                // Keyset pagination. LIMIT/OFFSET reads a shifting window:
+                // an INSERT or DELETE by ordinary site traffic while the dump
+                // is running moves every later row across the boundary, which
+                // duplicates or skips rows in a file nothing will validate
+                // until someone tries to restore it. Seeking past the last
+                // key read is stable under concurrent writes, and it also
+                // avoids the O(n^2) scan OFFSET costs on a large postmeta.
+                $sql = null === $cursor
+                    ? $wpdb->prepare("SELECT * FROM {$quoted} ORDER BY {$order} ASC LIMIT %d", self::BATCH)
+                    : $wpdb->prepare("SELECT * FROM {$quoted} WHERE {$order} > %s ORDER BY {$order} ASC LIMIT %d", $cursor, self::BATCH);
+            } else {
+                // No single-column primary key to seek on, so OFFSET is the
+                // only option — but ordered, so at least the sequence is
+                // deterministic rather than whatever the optimiser returns.
+                $sql = $wpdb->prepare("SELECT * FROM {$quoted} ORDER BY {$order} LIMIT %d OFFSET %d", self::BATCH, $offset);
+            }
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Identifiers come from the validated table list and from SHOW KEYS/SHOW COLUMNS on that table; every value is bound.
+            $rows = $wpdb->get_results($sql, ARRAY_A);
 
             if (! is_array($rows) || [] === $rows) {
                 break;
+            }
+
+            if (null !== $key) {
+                $last   = $rows[ count($rows) - 1 ];
+                $cursor = (string) ($last[ $key ] ?? '');
             }
 
             foreach ($rows as $row) {
@@ -185,6 +219,50 @@ class Db_Dumper
         }
 
         return $total;
+    }
+
+    /**
+     * The table's primary key, when it is a single column.
+     *
+     * A composite key is deliberately not stitched into a keyset seek: the
+     * multi-column comparison is easy to get subtly wrong, and the ordered
+     * OFFSET fallback is already correct for the rare WordPress table that
+     * has one (term_relationships being the notable case).
+     */
+    private function primary_key(string $table): ?string
+    {
+        global $wpdb;
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Identifier from the validated table list; no user input reaches this query.
+        $keys = $wpdb->get_results('SHOW KEYS FROM `' . str_replace('`', '``', $table) . "` WHERE Key_name = 'PRIMARY'", ARRAY_A);
+
+        if (! is_array($keys) || 1 !== count($keys)) {
+            return null;
+        }
+
+        $column = (string) ($keys[0]['Column_name'] ?? '');
+
+        return '' === $column ? null : $column;
+    }
+
+    /** Every column, backtick-quoted, as a deterministic ORDER BY clause. */
+    private function column_order(string $table): string
+    {
+        global $wpdb;
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Identifier from the validated table list; no user input reaches this query.
+        $columns = $wpdb->get_results('SHOW COLUMNS FROM `' . str_replace('`', '``', $table) . '`', ARRAY_A);
+
+        if (! is_array($columns) || [] === $columns) {
+            return '1';
+        }
+
+        $names = array_map(
+            static fn(array $c): string => '`' . str_replace('`', '``', (string) $c['Field']) . '`',
+            $columns
+        );
+
+        return implode(', ', $names);
     }
 
     /** Backtick-quoted column list for an INSERT, derived from the row keys. */
