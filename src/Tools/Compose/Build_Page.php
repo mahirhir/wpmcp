@@ -157,7 +157,7 @@ class Build_Page
         $problems = $this->inspect($spec);
 
         if ([] !== $problems) {
-            throw new \InvalidArgumentException($problems[0]);
+            throw new \InvalidArgumentException(esc_html($problems[0]));
         }
     }
 
@@ -352,7 +352,7 @@ class Build_Page
         ]);
 
         if (is_wp_error($item_id)) {
-            throw new \RuntimeException('The menu placement step failed: ' . $item_id->get_error_message());
+            throw new \RuntimeException('The menu placement step failed: ' . esc_html($item_id->get_error_message()));
         }
 
         return (int) $item_id;
