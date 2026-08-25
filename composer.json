@@ -27,7 +27,7 @@
     "test:pro": "phpunit --testsuite pro",
     "test:coverage": "phpunit --coverage-clover coverage/clover.xml --coverage-text",
     "manifest:regenerate": "WPMCP_REGENERATE_MANIFEST=1 phpunit --filter AbilityManifestTest",
-    "lint": "phpcs -q",
+    "lint": [ "phpcs -q", "phpcs -q --standard=phpcs-wporg.xml.dist" ],
     "compliance": "php tools/compliance/bin/compliance.php --profile=distribution",
     "compliance:wporg": "php tools/compliance/bin/compliance.php --profile=wporg-free --no-artifact",
     "build:wporg": "bash scripts/build-wporg-release.sh"
