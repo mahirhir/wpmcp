@@ -57,7 +57,8 @@ rm -f \
   "$STAGE/src/Tools/Code/Run_Php_Snippet.php" \
   "$STAGE/src/Tools/Code/Php_Snippet_Runner.php" \
   "$STAGE/src/Tools/Code/Php_Snippet_Validator.php" \
-  "$STAGE/src/Tools/Code/Validate_Php_Snippet.php"
+  "$STAGE/src/Tools/Code/Validate_Php_Snippet.php" \
+  "$STAGE/src/Tools/Media/Stock/Insert_Stock_Image.php"
 
 # This build never calls Freemius (free-only, no license checks needed;
 # Pro\Gate fails closed without the SDK).
