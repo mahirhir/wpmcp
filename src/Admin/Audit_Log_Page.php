@@ -117,6 +117,7 @@ class Audit_Log_Page
 
         foreach ($ops as $op) {
             $user  = get_userdata((int) $op['user_id']);
+            /* translators: %d: User ID */
             $who   = $user ? $user->display_name : sprintf(__('User #%d', 'wpmcp'), (int) $op['user_id']);
             $what  = sprintf('%s (#%d)', $op['tool_name'], (int) $op['object_id']);
 
@@ -173,11 +174,13 @@ class Audit_Log_Page
             printf(
                 '<td>%s</td>',
                 empty($row['ok'])
+                    /* translators: %s: Error code name */
                     ? esc_html(sprintf(__('Error: %s', 'wpmcp'), (string) ($row['error_code'] ?? '')))
                     : esc_html__('OK', 'wpmcp')
             );
             printf(
                 '<td>%s</td>',
+                /* translators: %d: Duration in milliseconds */
                 esc_html(sprintf(__('%d ms', 'wpmcp'), (int) ($row['duration_ms'] ?? 0)))
             );
             echo '<td>';
