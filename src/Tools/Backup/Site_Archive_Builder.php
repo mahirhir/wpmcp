@@ -48,8 +48,58 @@ class Site_Archive_Builder
         'wp-personal-data-exports',
     ];
 
-    /** File extensions skipped anywhere in the tree. */
+    /**
+     * File extensions skipped OUTSIDE the uploads directory.
+     *
+     * Deliberately not applied inside uploads. These extensions identify
+     * regenerable build output when they turn up beside a plugin or a cache,
+     * but inside uploads the very same extensions are user content: a
+     * WooCommerce store's downloadable products are .zip files in the Media
+     * Library, and so are exports and backups a site owner deliberately
+     * uploaded. Excluding them tree-wide meant a store migrated with every
+     * downloadable product missing while file_count still reported success —
+     * a loss discovered by the first customer who tried to download, not by
+     * anyone checking the archive.
+     */
     public const EXCLUDED_EXTENSIONS = ['log', 'zip', 'gz', 'tar', 'sql'];
+
+    /** Extensions still skipped inside uploads. See should_archive(). */
+    public const UPLOADS_EXCLUDED_EXTENSIONS = ['log'];
+
+    /**
+     * Whether one file belongs in the archive.
+     *
+     * Public because it is the rule that decides whether a user's data
+     * survives a migration, which makes it worth asserting directly rather
+     * than inferring from the contents of a built zip.
+     */
+    public static function should_archive(string $path): bool
+    {
+        $normalised = str_replace('\\', '/', $path);
+
+        foreach (explode('/', trim(dirname($normalised), '/')) as $segment) {
+            if (in_array($segment, self::EXCLUDED_DIRS, true)) {
+                return false;
+            }
+        }
+
+        $uploads  = wp_upload_dir();
+        $basedir  = isset($uploads['basedir']) ? str_replace('\\', '/', (string) $uploads['basedir']) : '';
+        $in_uploads = '' !== $basedir && str_starts_with($normalised, rtrim($basedir, '/') . '/');
+
+        $extension = strtolower(pathinfo($normalised, PATHINFO_EXTENSION));
+
+        if ($in_uploads) {
+            // Inside uploads almost everything is user content, but logs are
+            // not: they are machine-generated, regenerable, frequently the
+            // largest thing in the directory (WooCommerce's wc-logs), and
+            // they carry order and customer detail that has no business
+            // being copied into an archive someone may hand to a host.
+            return ! in_array($extension, self::UPLOADS_EXCLUDED_EXTENSIONS, true);
+        }
+
+        return ! in_array($extension, self::EXCLUDED_EXTENSIONS, true);
+    }
 
     private Db_Dumper $dumper;
 
@@ -233,11 +283,7 @@ class Site_Archive_Builder
                     if ($current->isDir()) {
                         return ! in_array($current->getFilename(), self::EXCLUDED_DIRS, true);
                     }
-                    return ! in_array(
-                        strtolower($current->getExtension()),
-                        self::EXCLUDED_EXTENSIONS,
-                        true
-                    );
+                    return self::should_archive($current->getPathname());
                 }
             ),
             \RecursiveIteratorIterator::LEAVES_ONLY

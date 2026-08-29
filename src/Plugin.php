@@ -288,6 +288,7 @@ use WPMCP\Auth\Bearer_Auth;
 use WPMCP\Auth\OAuth_Config;
 use WPMCP\Auth\Oauth_Gc;
 use WPMCP\MCP\Structured_Result;
+use WPMCP\MCP\Server as Mcp_Server;
 use WPMCP\MCP\Transport_Guard;
 
 // Plugin Check's Direct_File_Access_Check only accepts the bare defined()
@@ -522,6 +523,11 @@ final class Plugin
             // old domain. Scoped to our own routes; everything else on the
             // site is untouched.
             (new Transport_Guard())->register();
+            // Mounts /wp-json/mcp/wpmcp-server, the JSON-RPC endpoint the
+            // README and get-connection-info have always advertised. Without
+            // it wp_register_ability() gives us abilities but no MCP
+            // transport at all. See WPMCP\MCP\Server.
+            Mcp_Server::register();
             // structuredContent must serialize as a JSON object. Normalized
             // at the wire boundary only, so tool contracts are unchanged.
             (new Structured_Result())->register();
