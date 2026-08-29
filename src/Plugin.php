@@ -4,6 +4,10 @@
 
 namespace WPMCP;
 
+if (! defined('ABSPATH')) {
+    exit;
+}
+
 use WPMCP\Admin\Audit_Log_Page;
 use WPMCP\Admin\History_Page;
 use WPMCP\Admin\Restore_Controller;
