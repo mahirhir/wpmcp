@@ -6,8 +6,6 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-class Key_Vault_Corrupted_Exception extends \Exception {}
-
 class Key_Vault
 {
     private const CIPHER = 'aes-256-gcm';
@@ -16,12 +14,24 @@ class Key_Vault
 
     public function __construct(private ?string $salt = null)
     {
+        if (! in_array(self::CIPHER, openssl_get_cipher_methods(), true)) {
+            throw new \RuntimeException(sprintf('Required cipher %s is not supported by OpenSSL.', self::CIPHER));
+        }
+    }
+
+    private function get_base_salt(): string
+    {
+        return $this->salt ?? (function_exists('wp_salt') ? wp_salt('auth') : 'wpmcp_default_fallback_salt');
+    }
+
+    private function get_salt_fingerprint(): string
+    {
+        return substr(hash('sha256', $this->get_base_salt()), 0, 8);
     }
 
     private function get_encryption_key(int $user_id): string
     {
-        $base_salt = $this->salt ?? (function_exists('wp_salt') ? wp_salt('auth') : 'wpmcp_default_fallback_salt');
-        return hash_hmac('sha256', (string) $user_id, $base_salt, true);
+        return hash_hmac('sha256', (string) $user_id, $this->get_base_salt(), true);
     }
 
     /**
@@ -31,12 +41,17 @@ class Key_Vault
     {
         $api_key = trim($api_key);
         if ('' === $api_key) {
-            return $this->delete_key($user_id);
+            $this->delete_key($user_id);
+            return true; // Postcondition (no stored key) holds.
         }
 
         $key = $this->get_encryption_key($user_id);
         $iv_len = openssl_cipher_iv_length(self::CIPHER);
-        $iv = openssl_random_pseudo_bytes($iv_len);
+        if (false === $iv_len || $iv_len < 1) {
+            return false;
+        }
+
+        $iv = random_bytes($iv_len);
         $tag = '';
 
         $ciphertext = openssl_encrypt(
@@ -54,13 +69,15 @@ class Key_Vault
             return false;
         }
 
-        $packed = self::PREFIX . base64_encode($iv . $tag . $ciphertext);
+        $salt_fp = $this->get_salt_fingerprint();
+        $packed = self::PREFIX . $salt_fp . ':' . base64_encode($iv . $tag . $ciphertext);
         return (bool) update_user_meta($user_id, self::META_KEY, $packed);
     }
 
     /**
      * Retrieves and decrypts the API key for the user.
-     * Throws Key_Vault_Corrupted_Exception on bit-flip, tag mismatch, or truncation.
+     *
+     * @throws Key_Vault_Corrupted_Exception on bit-flip tampering, authentication tag mismatch, or corrupted format.
      */
     public function get_key(int $user_id): ?string
     {
@@ -73,7 +90,17 @@ class Key_Vault
             throw new Key_Vault_Corrupted_Exception('Ciphertext prefix mismatch or corrupted storage format.');
         }
 
-        $encoded = substr($raw, strlen(self::PREFIX));
+        $body = substr($raw, strlen(self::PREFIX));
+        $colon_pos = strpos($body, ':');
+        if (false === $colon_pos) {
+            // Legacy v1 without salt fingerprint: entire body is base64
+            $salt_fp = '';
+            $encoded = $body;
+        } else {
+            $salt_fp = substr($body, 0, $colon_pos);
+            $encoded = substr($body, $colon_pos + 1);
+        }
+
         $decoded = base64_decode($encoded, true);
         if (false === $decoded) {
             throw new Key_Vault_Corrupted_Exception('Base64 decode failure.');
@@ -81,7 +108,7 @@ class Key_Vault
 
         $iv_len = openssl_cipher_iv_length(self::CIPHER);
         $tag_len = 16;
-        if (strlen($decoded) < $iv_len + $tag_len + 1) {
+        if (false === $iv_len || strlen($decoded) < $iv_len + $tag_len + 1) {
             throw new Key_Vault_Corrupted_Exception('Truncated ciphertext payload.');
         }
 
@@ -116,9 +143,35 @@ class Key_Vault
 
     /**
      * Returns masked key status without revealing plaintext.
+     * Distinguishes missing, valid, salt_rotated, and corrupted states.
      */
     public function get_status(int $user_id): array
     {
+        $raw = get_user_meta($user_id, self::META_KEY, true);
+        if (! is_string($raw) || '' === $raw) {
+            return [
+                'configured' => false,
+                'status' => 'missing',
+                'masked' => null,
+            ];
+        }
+
+        // Check if salt fingerprint indicates rotation before attempting decrypt
+        if (str_starts_with($raw, self::PREFIX)) {
+            $body = substr($raw, strlen(self::PREFIX));
+            $colon_pos = strpos($body, ':');
+            if (false !== $colon_pos) {
+                $stored_fp = substr($body, 0, $colon_pos);
+                if ('' !== $stored_fp && ! hash_equals($stored_fp, $this->get_salt_fingerprint())) {
+                    return [
+                        'configured' => true,
+                        'status' => 'salt_rotated',
+                        'masked' => null,
+                    ];
+                }
+            }
+        }
+
         try {
             $key = $this->get_key($user_id);
             if (null === $key) {
@@ -129,8 +182,8 @@ class Key_Vault
                 ];
             }
 
-            $masked = strlen($key) > 8
-                ? substr($key, 0, 4) . '...' . substr($key, -4)
+            $masked = strlen($key) >= 4
+                ? '...' . substr($key, -4)
                 : '****';
 
             return [
