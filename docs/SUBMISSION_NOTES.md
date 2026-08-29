@@ -1,4 +1,4 @@
-﻿# WordPress.org Submission Notes: Package & Theme Management Abilities
+# WordPress.org Submission Notes: Package & Theme Management Abilities
 
 This document provides reviewer context for the plugin and theme management abilities (`install-plugin`, `activate-plugin`, `delete-plugin`, `install-theme`, `activate-theme`, `delete-theme`) implemented in WP MCP.
 
@@ -54,3 +54,19 @@ The following 19 code sites implement package inspection, installation, activati
 In addition to core capability gates, WP MCP wraps every package modification in a deterministic snapshot:
 - Before any plugin or theme is activated, deactivated, or updated, `Safe_Mutation` captures the active plugin list and theme state.
 - If an agent performs an unwanted package activation or configuration change, the administrator can roll back the change with a single click from the History screen.
+
+---
+
+## 4. Compliance with Guideline 6 (Licensing SDK & Exclusion Architecture)
+
+WordPress.org Guideline 6 prohibits services whose sole purpose is validating licenses while the corresponding functionality resides locally in the plugin.
+
+WP MCP adheres to this standard through physical build-time separation:
+1. **Physical Build-Time Pruning**:
+   - The WordPress.org directory build (`dist/wpmcp-<version>.zip`) is assembled via `scripts/build-wporg-release.sh` and `scripts/flavors/wporg/strip.php`.
+   - The licensing SDK (`freemius/wordpress-sdk`), `src/Freemius`, and `src/Pro` are completely removed via `composer remove freemius/wordpress-sdk --update-no-dev`.
+   - The directory build contains zero license keys, zero license validation HTTP calls, and zero gated features.
+
+2. **Official WordPress.org Update Delivery**:
+   - The directory artifact relies 100% on WordPress Core's official update pipeline (`api.wordpress.org`).
+   - No third-party licensing or custom updater SDK hooks into `site_transient_update_plugins` in the directory build.
