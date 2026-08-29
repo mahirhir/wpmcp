@@ -76,6 +76,7 @@ class Audit_Log_Page
 
     private function current_tab(): string
     {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only navigation tab parameter.
         $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : '';
         return self::TAB_REQUESTS === $tab ? self::TAB_REQUESTS : self::TAB_MUTATIONS;
     }
@@ -210,6 +211,7 @@ class Audit_Log_Page
     private function filters_from_request(): array
     {
         $filters = [];
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only filter parameters for admin audit display.
         foreach (['user_id', 'tool_name', 'domain', 'object_type', 'object_id', 'date_from', 'date_to'] as $key) {
             if (isset($_GET[ $key ]) && '' !== $_GET[ $key ]) {
                 $filters[ $key ] = sanitize_text_field(wp_unslash($_GET[ $key ]));
@@ -222,7 +224,9 @@ class Audit_Log_Page
     private function render_filter_form(array $filters): void
     {
         echo '<form method="get">';
-        printf('<input type="hidden" name="page" value="%s" />', esc_attr(isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : self::SLUG));
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only filter form preservation.
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : self::SLUG;
+        printf('<input type="hidden" name="page" value="%s" />', esc_attr($page));
         printf('<input type="hidden" name="tab" value="%s" />', esc_attr(self::TAB_MUTATIONS));
         printf(
             '<input type="text" name="tool_name" placeholder="%s" value="%s" />',
