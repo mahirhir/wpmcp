@@ -25,7 +25,7 @@ class BootstrapTest extends \WP_UnitTestCase
         $this->assertSame('wpmcp-pro', $config['premium_slug']);
         $this->assertFalse($config['has_addons']);
         $this->assertTrue($config['has_paid_plans']);
-        $this->assertTrue($config['anonymous_mode']);
+        $this->assertFalse($config['anonymous_mode']);
         $this->assertSame('wpmcp', $config['menu']['slug']);
     }
 
