@@ -131,6 +131,9 @@ final class Forbidden_Functions_Rule extends Base_Rule
                 );
             }
             foreach ($file->find_calls(array_keys(self::ALTERNATIVES), false) as $call) {
+                if ($file->has_phpcs_ignore($call['line'], 'WordPress.WP.AlternativeFunctions')) {
+                    continue;
+                }
                 $findings[] = $this->finding(
                     $file,
                     $call['line'],
@@ -138,6 +141,9 @@ final class Forbidden_Functions_Rule extends Base_Rule
                 );
             }
             foreach ($this->curl_calls($file) as $call) {
+                if ($file->has_phpcs_ignore($call['line'], 'WordPress.WP.AlternativeFunctions')) {
+                    continue;
+                }
                 $findings[] = $this->finding(
                     $file,
                     $call['line'],

@@ -140,6 +140,23 @@ class CodeRulesTest extends Compliance_Test_Case
         $this->assert_clean($findings);
     }
 
+    public function test_phpcs_ignore_suppresses_alternative_functions(): void
+    {
+        $body = "<?php\nclass Pipes {\n    public function run( \$pipe, \$handle ) {\n";
+        $body .= "        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Process pipe.\n";
+        $body .= "        fclose( \$pipe );\n";
+        $body .= "        // phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_setopt -- SSRF pinning.\n";
+        $body .= "        curl_setopt( \$handle, CURLOPT_RESOLVE, [] );\n";
+        $body .= "    }\n}\n";
+
+        $findings = $this->findings(new Forbidden_Functions_Rule(), [
+            'example-toolkit.php' => $this->main_file(),
+            'includes/pipes.php' => $body,
+        ]);
+
+        $this->assert_clean($findings);
+    }
+
     public function test_php_hygiene_reports_heredoc_goto_and_short_tags(): void
     {
         $heredoc = "<?php\nfunction example_markup( \$name ) {\n    \$out = <<<HTML\n<p>Hello</p>\nHTML;\n    goto finish;\n    finish:\n    return \$out;\n}\n";

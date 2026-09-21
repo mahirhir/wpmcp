@@ -160,7 +160,7 @@ foreach (
 // The Elementor dialect is not gated here, it is simply free.
 $edits['src/Tools/Compose/Build_Page.php'][] = [
     "            if (! Gate::can_use('build-page-builder')) {\n"
-        . "                throw new \\RuntimeException('The builder (Elementor) dialect of build-page is a PRO feature; the free tier composes Gutenberg pages.');\n"
+        . "                throw new \\RuntimeException('The builder (Elementor) dialect is unavailable; only the standard Gutenberg dialect is supported on this install.');\n"
         . "            }\n",
     '',
     1,
